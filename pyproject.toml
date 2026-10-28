@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sitright"
+dynamic = ["version"]
+description = "Webcam posture, blink and break reminders that run in your system tray."
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "A2M33" }]
+requires-python = ">=3.10"
+dependencies = [
+    "mediapipe>=0.10.14",
+    "opencv-python>=4.8",
+    "pystray>=0.19",
+    "pillow>=10",
+    "plyer>=2.1; platform_system != 'Windows'",
+]
+keywords = ["posture", "webcam", "health", "computer-vision", "mediapipe", "tray"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Utilities",
+]
+
+[project.urls]
+Homepage = "https://github.com/A2M33/sitright"
+
+[project.scripts]
+sitright = "sitright.__main__:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools.dynamic]
+version = { attr = "sitright.__version__" }
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
