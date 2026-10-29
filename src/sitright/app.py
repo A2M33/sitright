@@ -6,7 +6,7 @@ import time
 
 from PIL import Image, ImageDraw
 
-from . import config
+from . import config, inuse
 from .engine import CALIBRATION_SECONDS, FPS, CameraError, Engine, open_detector
 from .monitor import Baseline, Monitor, Sample
 
@@ -47,7 +47,14 @@ def run_tray(camera: int = 0) -> None:
         icon.title = tooltip
 
     baseline, thresholds = config.load()
-    engine = Engine(camera, on_change, lambda t, m: notify(icon, t, m), baseline, thresholds)
+    engine = Engine(
+        camera,
+        on_change,
+        lambda t, m: notify(icon, t, m),
+        baseline,
+        thresholds,
+        check_in_use=inuse.others_using_camera_or_mic,
+    )
 
     engine.on_menu = lambda: icon.update_menu()
 

@@ -18,6 +18,7 @@ CALIBRATION_SECONDS = 3.0
 FPS = 12  # enough to catch blinks (~150 ms) without keeping a CPU core busy
 RETRY_SECONDS = 30.0  # how often to try the camera again after it failed
 MAX_READ_FAILURES = 10  # consecutive bad frames before we give the camera up
+IN_USE_POLL_SECONDS = 5.0  # how often to check whether a call app grabbed the camera/mic
 
 CAMERA_DOWN = "SitRight: camera busy / not found"
 DAY_STARTS_AT = 6  # "pause until tomorrow" ends at this hour
@@ -58,6 +59,7 @@ class Engine(threading.Thread):
         open_detector: Callable[[int], object] = open_detector,
         clock: Callable[[], float] = time.monotonic,
         wall_clock: Callable[[], float] = time.time,
+        check_in_use: Callable[[], list[str]] = lambda: [],
     ) -> None:
         super().__init__(daemon=True)
         self.camera = camera
@@ -72,6 +74,10 @@ class Engine(threading.Thread):
         self._wall = wall_clock
         self._paused_until: float | None = None  # wall-clock time; inf = until resumed
         self._was_paused = False
+        self.auto_pause = True  # step aside while another app uses the camera or mic
+        self._check_in_use = check_in_use
+        self._busy: list[str] = []
+        self._next_in_use_check = 0.0
         self._stop_event = threading.Event()
         self._calibrate = threading.Event()
         self._retry_at: float | None = None
@@ -131,6 +137,12 @@ class Engine(threading.Thread):
             self._release()
             self.on_change("idle", "SitRight: " + self.pause_text())
             return 0.5
+        busy = self._others_using_devices(now)
+        if busy:
+            self._release()
+            apps = " and ".join(busy[:2])
+            self.on_change("idle", f"SitRight: paused, camera or mic in use by {apps}")
+            return 1.0
         if self.detector is None and not self._open_camera(now):
             return 0.5
         try:
@@ -153,6 +165,17 @@ class Engine(threading.Thread):
             self.on_notify("SitRight", alert.value)
         self._report(self.monitor.status)
         return max(0.0, 1 / FPS - (self._clock() - now))
+
+    def _others_using_devices(self, now: float) -> list[str]:
+        if not self.auto_pause:
+            return []
+        if now >= self._next_in_use_check:
+            self._next_in_use_check = now + IN_USE_POLL_SECONDS
+            try:
+                self._busy = list(self._check_in_use())
+            except Exception:  # a registry hiccup must not stop the app
+                self._busy = []
+        return self._busy
 
     def _open_camera(self, now: float) -> bool:
         if self._retry_at is not None and now < self._retry_at:

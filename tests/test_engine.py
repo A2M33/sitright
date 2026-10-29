@@ -42,7 +42,7 @@ class FakeDetector:
 
 
 class Harness:
-    def __init__(self, script, open_fails=lambda now: False) -> None:
+    def __init__(self, script, open_fails=lambda now: False, in_use=lambda now: []) -> None:
         self.clock = Clock()
         self.opens: list[float] = []
         self.tooltips: list[str] = []
@@ -63,6 +63,7 @@ class Harness:
             clock=self.clock,
             # Wall clock starts at 2026-03-02 10:00 local time, moves with the fake clock.
             wall_clock=lambda: datetime(2026, 3, 2, 10, 0).timestamp() + self.clock.t,
+            check_in_use=lambda: in_use(self.clock.t),
         )
 
     def run_until(self, end: float) -> None:
@@ -159,3 +160,19 @@ def test_describe_until():
     now = datetime(2026, 3, 2, 22, 0)
     assert describe_until(datetime(2026, 3, 2, 22, 30), now) == "until 22:30"
     assert describe_until(datetime(2026, 3, 3, 6, 0), now) == "until tomorrow 06:00"
+
+def test_auto_pause_while_another_app_uses_the_camera():
+    h = Harness(lambda now: GOOD, in_use=lambda now: ["Zoom.exe"] if 20 <= now < 80 else [])
+    h.run_until(30)
+    assert h.engine.detector is None  # let go so the call app can have it
+    assert h.tooltips[-1] == "SitRight: paused, camera or mic in use by Zoom.exe"
+    h.run_until(90)
+    assert h.engine.detector is not None  # back on its own after the call
+    assert h.engine.monitor.status.face
+
+
+def test_auto_pause_can_be_turned_off():
+    h = Harness(lambda now: GOOD, in_use=lambda now: ["Teams"])
+    h.engine.auto_pause = False
+    h.run_until(10)
+    assert h.engine.detector is not None
