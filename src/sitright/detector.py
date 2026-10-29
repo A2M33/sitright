@@ -15,6 +15,7 @@ from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python.vision import FaceLandmarker, FaceLandmarkerOptions, RunningMode
 
 from .config import cache_dir
+from .engine import CameraError
 from .monitor import Sample, eye_aspect_ratio
 
 MODEL_URL = (
@@ -41,22 +42,29 @@ def model_path() -> Path:
 
 class Detector:
     def __init__(self, camera: int = 0) -> None:
+        self.camera = camera
         self._cap = cv2.VideoCapture(camera)
         if not self._cap.isOpened():
-            raise RuntimeError(f"Can't open camera {camera}. Is another app using it?")
+            self._cap.release()
+            raise CameraError(f"Can't open camera {camera}. Is another app using it?")
         options = FaceLandmarkerOptions(
             base_options=BaseOptions(model_asset_path=str(model_path())),
             running_mode=RunningMode.VIDEO,
             num_faces=1,
         )
-        self._landmarker = FaceLandmarker.create_from_options(options)
+        try:
+            self._landmarker = FaceLandmarker.create_from_options(options)
+        except Exception:
+            self._cap.release()
+            raise
         self._last_ms = 0
         self.last_frame = None  # kept only in memory, for the optional preview window
 
     def read(self, now: float) -> Sample | None:
+        """None means "no face in this frame". A broken camera raises CameraError instead."""
         ok, frame = self._cap.read()
-        if not ok:
-            return None
+        if not ok or frame is None:
+            raise CameraError(f"Camera {self.camera} stopped sending pictures.")
         self.last_frame = frame
         h, w = frame.shape[:2]
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)

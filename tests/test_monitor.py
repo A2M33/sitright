@@ -84,6 +84,16 @@ def test_break_reminder_and_reset_when_away():
     assert m.status.sitting_minutes == 0
 
 
+def test_long_gap_without_frames_counts_as_a_break():
+    th = Thresholds(break_after_minutes=10, min_blinks_per_minute=0)
+    m = Monitor(BASE, th)
+    _, t = feed(m, GOOD, 0, 9 * 60, step=1)
+    # No frames at all for an hour (camera unplugged or paused), then back.
+    alerts = m.update(GOOD, t + 3600)
+    assert Alert.TAKE_BREAK not in alerts
+    assert m.status.sitting_minutes == 0
+
+
 def test_leaving_resets_bad_posture_timer():
     m = Monitor(BASE)
     _, t = feed(m, SLOUCH, 0, 6)

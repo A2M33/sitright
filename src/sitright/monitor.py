@@ -96,10 +96,16 @@ class Monitor:
         self._face_since: float | None = None  # start of the current blink-measuring stretch
         self._seated_since: float | None = None
         self._last_seen: float | None = None
+        self._last_update: float | None = None
 
     def update(self, sample: Sample | None, now: float) -> list[Alert]:
         """Feed one frame (None = no face). Returns reminders to show right now."""
         th = self.thresholds
+        last, self._last_update = self._last_update, now
+        if last is not None and now - last >= th.away_reset_seconds:
+            # No frames for a long while (camera gone, paused): we can't tell if you
+            # stayed, so count it as a break rather than nagging the moment we're back.
+            self._forget()
         if sample is None:
             self.status.face = False
             self._bad_since.clear()
@@ -142,6 +148,14 @@ class Monitor:
             alerts.append(Alert.TAKE_BREAK)
 
         return [a for a in alerts if self._cooled_down(a, now)]
+
+    def _forget(self) -> None:
+        self._bad_since.clear()
+        self._face_since = None
+        self._blinks.clear()
+        self._seated_since = None
+        self._last_seen = None
+        self.status = Status()
 
     def _track_blink(self, sample: Sample, now: float) -> None:
         # Relative to your own open-eye value, so glasses and eye shape don't matter.
