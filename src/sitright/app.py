@@ -70,7 +70,9 @@ def run_tray(camera: int | None = None) -> None:
             icon.icon = make_icon(new_state)
         icon.title = tooltip
 
-    settings = config.load()
+    settings, problems = config.read()
+    for problem in problems:
+        print("config.json:", problem)
     engine = Engine(
         settings.camera if camera is None else camera,
         on_change,
@@ -196,6 +198,9 @@ def run_tray(camera: int | None = None) -> None:
 
     def setup(icon) -> None:
         icon.visible = True
+        if problems:
+            more = f" (+{len(problems) - 2} more)" if len(problems) > 2 else ""
+            notify(icon, "SitRight: check config.json", " ".join(problems[:2]) + more)
         engine.start()
         scan_cameras()
 
@@ -265,7 +270,9 @@ def run_preview(camera: int | None = None) -> None:
     """Camera window with live numbers. Handy for tuning and for recording a demo."""
     import cv2
 
-    settings = config.load()
+    settings, problems = config.read()
+    for problem in problems:
+        print("config.json:", problem)
     try:
         detector = open_detector(settings.camera if camera is None else camera)
     except CameraError as exc:
