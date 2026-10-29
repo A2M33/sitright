@@ -9,11 +9,20 @@ from __future__ import annotations
 import threading
 import time
 from datetime import datetime, timedelta
-from typing import Callable
+from typing import Callable, Protocol
 
 from . import config
-from .monitor import Baseline, Gate, Monitor, Sample, Status
+from .monitor import (
+    Baseline,
+    Gate,
+    Monitor,
+    Sample,
+    Status,
+    calibration_phase,
+    pose_warnings,
+)
 
+COUNTDOWN = 3  # seconds of 3-2-1 before capture starts
 CALIBRATION_SECONDS = 3.0
 # A blink lasts 100-150 ms. At 12 FPS a quick one could fall between two frames;
 # 20 FPS gives at least two frames per blink and still leaves the CPU mostly idle.
@@ -29,6 +38,21 @@ SNOOZE_SECONDS = 15 * 60
 
 class CameraError(RuntimeError):
     """The camera could not be opened or stopped delivering frames."""
+
+
+class CalibrationView(Protocol):
+    def show(self, frame, lines: list[str]) -> bool:
+        """Draw the frame with `lines` on top. False = the user closed the window."""
+
+    def close(self) -> None: ...
+
+
+class NoView:
+    def show(self, frame, lines: list[str]) -> bool:
+        return True
+
+    def close(self) -> None:
+        pass
 
 
 def tomorrow_morning(now: datetime) -> datetime:
@@ -83,6 +107,8 @@ class Engine(threading.Thread):
         wall_clock: Callable[[], float] = time.time,
         check_in_use: Callable[[], list[str]] = lambda: [],
         save: Callable[[config.Settings], None] = config.save,
+        calibration_view: Callable[[], CalibrationView] = lambda: NoView(),
+        sleep: Callable[[float], object] | None = None,
     ) -> None:
         super().__init__(daemon=True)
         self.camera = camera
@@ -105,6 +131,8 @@ class Engine(threading.Thread):
         self._busy: list[str] = []
         self._next_in_use_check = 0.0
         self._stop_event = threading.Event()
+        self._sleep = sleep or self._stop_event.wait
+        self._calibration_view = calibration_view
         self._calibrate = threading.Event()
         self._retry_at: float | None = None
         self._read_failures = 0
@@ -299,27 +327,44 @@ class Engine(threading.Thread):
             self.detector = None
 
     def _run_calibration(self) -> None:
+        """Countdown, then a few seconds of capture, shown in a small preview window."""
         self.on_change("idle", "SitRight: calibrating")
-        self.on_notify(
-            "SitRight", "Calibrating: sit the way you want to sit and look at the screen."
-        )
-        self._stop_event.wait(2.0)  # time to settle into position
+        view = self._calibration_view()
         samples: list[Sample] = []
-        end = self._clock() + CALIBRATION_SECONDS
-        while self._clock() < end and not self._stop_event.is_set():
-            sample = self.detector.read(self._clock())
-            if sample:
-                samples.append(sample)
-            self._stop_event.wait(1 / FPS)
+        start = self._clock()
+        try:
+            while not self._stop_event.is_set():
+                now = self._clock()
+                phase, count = calibration_phase(now - start, COUNTDOWN, CALIBRATION_SECONDS)
+                if phase == "done":
+                    break
+                sample = self.detector.read(now)
+                if phase == "capture" and sample:
+                    samples.append(sample)
+                if phase == "countdown":
+                    hints = pose_warnings([sample]) if sample else ["I can't see your face yet."]
+                    lines = [str(count), "Sit the way you want to sit"] + hints[:1]
+                else:
+                    lines = ["Hold still...", "Look at the screen"]
+                if not view.show(getattr(self.detector, "last_frame", None), lines):
+                    self.on_notify("SitRight", "Calibration cancelled. Your old pose is kept.")
+                    return
+                self._sleep(1 / FPS)
+        finally:
+            view.close()
         try:
             baseline = Baseline.from_samples(samples)
         except ValueError:
             self.on_notify("SitRight", "I couldn't see your face. Check the camera and try again.")
             return
         self.settings.baseline = baseline
-        config.save(self.settings)
+        self._save(self.settings)
         self.monitor = self._new_monitor(baseline)
-        self.on_notify("SitRight", "Done. I'll let you know if you slouch.")
+        warnings = pose_warnings(samples)
+        if warnings:
+            self.on_notify("SitRight", "Saved, but check this: " + " ".join(warnings))
+        else:
+            self.on_notify("SitRight", "Done. I'll let you know if you slouch.")
 
     def _report(self, s: Status) -> None:
         if not s.face:

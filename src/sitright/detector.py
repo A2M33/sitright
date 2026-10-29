@@ -102,6 +102,7 @@ class Detector:
             nose_y=lm[NOSE_TIP].y,
             face_width=math.dist(pt(LEFT_CHEEK), pt(RIGHT_CHEEK)),
             pitch=head_pitch(matrices[0]) if matrices else None,
+            nose_x=lm[NOSE_TIP].x,
         )
 
     def close(self) -> None:

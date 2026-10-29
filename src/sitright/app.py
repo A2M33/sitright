@@ -11,13 +11,21 @@ from PIL import Image, ImageDraw
 from . import autostart, config, inuse
 from .engine import (
     CALIBRATION_SECONDS,
+    COUNTDOWN,
     FPS,
     CameraError,
     Engine,
     find_cameras,
     open_detector,
 )
-from .monitor import SENSITIVITY, Baseline, Monitor, Sample
+from .monitor import (
+    SENSITIVITY,
+    Baseline,
+    Monitor,
+    Sample,
+    calibration_phase,
+    pose_warnings,
+)
 
 COLORS = {"ok": "#3fb950", "warn": "#d29922", "idle": "#6e7681"}
 REMINDER_LABELS = {
@@ -69,6 +77,7 @@ def run_tray(camera: int | None = None) -> None:
         lambda t, m: notify(icon, t, m),
         settings,
         check_in_use=inuse.others_using_camera_or_mic,
+        calibration_view=CvCalibrationView,
     )
 
     engine.on_menu = lambda: icon.update_menu()
@@ -193,6 +202,65 @@ def run_tray(camera: int | None = None) -> None:
     icon.run(setup)
 
 
+def draw_lines(frame, lines: list[tuple[str, tuple[int, int, int]]], scale: float = 0.8) -> None:
+    import cv2
+
+    step = int(40 * scale)
+    for i, (text, color) in enumerate(lines):
+        org = (16, step + i * step)
+        cv2.putText(frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), 4, cv2.LINE_AA)
+        cv2.putText(frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, color, 2, cv2.LINE_AA)
+
+
+def draw_countdown(frame, number: str) -> None:
+    import cv2
+
+    h, w = frame.shape[:2]
+    font, scale, thick = cv2.FONT_HERSHEY_SIMPLEX, h / 90, max(4, h // 40)
+    (tw, th), _ = cv2.getTextSize(number, font, scale, thick)
+    org = ((w - tw) // 2, (h + th) // 2)
+    cv2.putText(frame, number, org, font, scale, (0, 0, 0), thick + 6, cv2.LINE_AA)
+    cv2.putText(frame, number, org, font, scale, (255, 255, 255), thick, cv2.LINE_AA)
+
+
+class CvCalibrationView:
+    """A small always-on-top window showing the camera, the countdown and hints."""
+
+    TITLE = "SitRight calibration (Esc = cancel)"
+    SIZE = (480, 360)
+
+    def __init__(self) -> None:
+        self._shown = False
+
+    def show(self, frame, lines: list[str]) -> bool:
+        import cv2
+
+        if frame is None:
+            return True
+        img = cv2.resize(cv2.flip(frame, 1), self.SIZE)  # mirrored, like a selfie camera
+        text = lines
+        if lines and lines[0].isdigit():
+            draw_countdown(img, lines[0])
+            text = lines[1:]
+        draw_lines(img, [(t, (0, 200, 255) if i else (255, 255, 255)) for i, t in enumerate(text)],
+                   scale=0.6)
+        cv2.imshow(self.TITLE, img)
+        if not self._shown:
+            self._shown = True
+            cv2.setWindowProperty(self.TITLE, cv2.WND_PROP_TOPMOST, 1)
+        if cv2.waitKey(1) & 0xFF == 27:
+            return False
+        # The user closed the window with its X button.
+        return cv2.getWindowProperty(self.TITLE, cv2.WND_PROP_VISIBLE) >= 1
+
+    def close(self) -> None:
+        import cv2
+
+        if self._shown:
+            cv2.destroyWindow(self.TITLE)
+            cv2.waitKey(1)
+
+
 def run_preview(camera: int | None = None) -> None:
     """Camera window with live numbers. Handy for tuning and for recording a demo."""
     import cv2
@@ -210,7 +278,8 @@ def run_preview(camera: int | None = None) -> None:
 
     monitor = new_monitor(settings.baseline)
     calib: list[Sample] = []
-    calib_until = 0.0
+    calib_start: float | None = None
+    warnings: list[str] = []
     try:
         while True:
             now = time.monotonic()
@@ -221,43 +290,49 @@ def run_preview(camera: int | None = None) -> None:
                 break
             frame = cv2.flip(detector.last_frame, 1)
             lines: list[tuple[str, tuple[int, int, int]]] = []
-            if now < calib_until:
-                if sample:
-                    calib.append(sample)
-                lines.append(("Calibrating... sit straight", (0, 200, 255)))
-            elif calib:
-                try:
-                    settings.baseline = Baseline.from_samples(calib)
-                    config.save(settings)
-                    monitor = new_monitor(settings.baseline)
-                except ValueError:
-                    pass
-                calib = []
-            if monitor is None and now >= calib_until:
-                lines.append(("Press C to calibrate", (0, 200, 255)))
-            elif monitor and now >= calib_until:
-                alerts = monitor.update(sample, now)
-                s = monitor.status
-                green, amber = (80, 185, 63), (34, 153, 210)
-                lines.append(("Posture: " + ("slouching" if s.slouching else "good"),
-                              amber if s.slouching else green))
-                lines.append(("Distance: " + ("too close" if s.too_close else "good"),
-                              amber if s.too_close else green))
-                bpm = "measuring..." if s.blinks_per_minute is None else f"{s.blinks_per_minute:.0f}/min"
-                lines.append((f"Blinks: {bpm}", (230, 230, 230)))
-                for alert in alerts:
-                    print(alert.value)
-            for i, (text, color) in enumerate(lines):
-                cv2.putText(frame, text, (16, 36 + i * 32), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
-                            (0, 0, 0), 4, cv2.LINE_AA)
-                cv2.putText(frame, text, (16, 36 + i * 32), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
-                            color, 2, cv2.LINE_AA)
+            phase = "idle"
+            if calib_start is not None:
+                phase, count = calibration_phase(now - calib_start, COUNTDOWN, CALIBRATION_SECONDS)
+                if phase == "countdown":
+                    draw_countdown(frame, str(count))
+                    hints = pose_warnings([sample]) if sample else ["I can't see your face yet."]
+                    lines += [(h, (0, 200, 255)) for h in hints]
+                elif phase == "capture":
+                    if sample:
+                        calib.append(sample)
+                    lines.append(("Hold still...", (0, 200, 255)))
+                else:
+                    try:
+                        settings.baseline = Baseline.from_samples(calib)
+                        config.save(settings)
+                        monitor = new_monitor(settings.baseline)
+                        warnings = pose_warnings(calib)
+                    except ValueError:
+                        warnings = ["I couldn't see your face. Press C to try again."]
+                    calib, calib_start = [], None
+            if phase in ("idle", "done"):
+                if monitor is None:
+                    lines.append(("Press C to calibrate", (0, 200, 255)))
+                else:
+                    alerts = monitor.update(sample, now)
+                    s = monitor.status
+                    green, amber = (80, 185, 63), (34, 153, 210)
+                    lines.append(("Posture: " + ("slouching" if s.slouching else "good"),
+                                  amber if s.slouching else green))
+                    lines.append(("Distance: " + ("too close" if s.too_close else "good"),
+                                  amber if s.too_close else green))
+                    bpm = "measuring..." if s.blinks_per_minute is None else f"{s.blinks_per_minute:.0f}/min"
+                    lines.append((f"Blinks: {bpm}", (230, 230, 230)))
+                    for alert in alerts:
+                        print(alert.value)
+                lines += [(w, (0, 200, 255)) for w in warnings]
+            draw_lines(frame, lines)
             cv2.imshow("SitRight preview (C = calibrate, Q = quit)", frame)
             key = cv2.waitKey(max(1, int(1000 / FPS))) & 0xFF
             if key in (ord("q"), 27):
                 break
             if key == ord("c"):
-                calib, calib_until = [], time.monotonic() + CALIBRATION_SECONDS
+                calib, calib_start, warnings = [], time.monotonic(), []
     finally:
         detector.close()
         cv2.destroyAllWindows()

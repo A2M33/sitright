@@ -39,6 +39,44 @@ class Sample:
     nose_y: float  # vertical position of the nose tip
     face_width: float  # cheek-to-cheek distance, grows as you lean in
     pitch: float | None = None  # head nod in degrees, if the model gave us a pose
+    nose_x: float = 0.5  # horizontal position of the nose tip
+
+
+def calibration_phase(elapsed: float, countdown: int, capture: float) -> tuple[str, int]:
+    """Where a calibration run is after `elapsed` seconds.
+
+    ("countdown", 3..1), then ("capture", 0) for `capture` seconds, then ("done", 0).
+    """
+    if elapsed < countdown:
+        return "countdown", countdown - int(elapsed)
+    if elapsed < countdown + capture:
+        return "capture", 0
+    return "done", 0
+
+
+# Face width (cheek to cheek, in frame heights) at a normal desk distance is ~0.25-0.35.
+FACE_TOO_BIG = 0.5
+FACE_TOO_SMALL = 0.12
+
+
+def pose_warnings(samples: list[Sample]) -> list[str]:
+    """Reasons a calibration pose looks off. Empty list = looks fine."""
+    if not samples:
+        return []
+    width = median(s.face_width for s in samples)
+    x = median(s.nose_x for s in samples)
+    y = median(s.nose_y for s in samples)
+    warnings = []
+    if width > FACE_TOO_BIG:
+        warnings.append("You're very close to the camera. Sit back to your normal distance.")
+    elif width < FACE_TOO_SMALL:
+        warnings.append("You look far from the camera. Move closer or pick another camera.")
+    if not (0.3 <= x <= 0.7 and 0.2 <= y <= 0.75):
+        warnings.append("Your face is off to the side of the picture. Point the camera at you.")
+    pitches = [s.pitch for s in samples if s.pitch is not None]
+    if pitches and abs(median(pitches)) > 20:
+        warnings.append("Your head is tipped a lot. Look straight at the screen.")
+    return warnings
 
 
 @dataclass

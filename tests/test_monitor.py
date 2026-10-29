@@ -9,7 +9,9 @@ from sitright.monitor import (
     Sample,
     Thresholds,
     eye_aspect_ratio,
+    calibration_phase,
     head_pitch,
+    pose_warnings,
 )
 
 BASE = Baseline(nose_y=0.50, face_width=0.30, open_ear=0.30)
@@ -241,3 +243,19 @@ def test_sensitivity_scales_thresholds():
     assert 1 < strict.too_close_ratio < th.too_close_ratio < relaxed.too_close_ratio
     assert th.scaled("normal") == th
     assert th.scaled("nonsense") == th
+
+def test_calibration_phase():
+    assert calibration_phase(0.0, 3, 3) == ("countdown", 3)
+    assert calibration_phase(1.2, 3, 3) == ("countdown", 2)
+    assert calibration_phase(2.9, 3, 3) == ("countdown", 1)
+    assert calibration_phase(3.0, 3, 3) == ("capture", 0)
+    assert calibration_phase(6.0, 3, 3) == ("done", 0)
+
+
+def test_pose_warnings():
+    assert pose_warnings([GOOD]) == []
+    assert pose_warnings([]) == []
+    assert "very close" in pose_warnings([Sample(0.3, 0.5, 0.6)])[0]
+    assert "far" in pose_warnings([Sample(0.3, 0.5, 0.08)])[0]
+    assert "off to the side" in pose_warnings([Sample(0.3, 0.5, 0.3, nose_x=0.9)])[0]
+    assert "tipped" in pose_warnings([Sample(0.3, 0.5, 0.3, pitch=35.0)])[0]

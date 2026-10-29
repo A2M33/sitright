@@ -43,8 +43,29 @@ class FakeDetector:
         self.closed = True
 
 
+class FakeView:
+    def __init__(self, cancel_after: int | None = None) -> None:
+        self.frames: list[list[str]] = []
+        self.closed = False
+        self.cancel_after = cancel_after
+
+    def show(self, frame, lines):
+        self.frames.append(lines)
+        return self.cancel_after is None or len(self.frames) < self.cancel_after
+
+    def close(self):
+        self.closed = True
+
+
 class Harness:
-    def __init__(self, script, open_fails=lambda now: False, in_use=lambda now: []) -> None:
+    def __init__(
+        self,
+        script,
+        open_fails=lambda now: False,
+        in_use=lambda now: [],
+        baseline=BASE,
+        view=None,
+    ) -> None:
         self.clock = Clock()
         self.opens: list[float] = []
         self.tooltips: list[str] = []
@@ -63,14 +84,19 @@ class Harness:
             0,
             lambda state, tip: self.tooltips.append(tip),
             lambda title, msg: self.notes.append(msg),
-            settings=Settings(baseline=BASE),
+            settings=Settings(baseline=baseline),
             open_detector=opener,
             clock=self.clock,
             # Wall clock starts at 2026-03-02 10:00 local time, moves with the fake clock.
             wall_clock=lambda: datetime(2026, 3, 2, 10, 0).timestamp() + self.clock.t,
             check_in_use=lambda: in_use(self.clock.t),
             save=self.saved.append,
+            calibration_view=lambda: view or FakeView(),
+            sleep=self.advance,
         )
+
+    def advance(self, seconds: float) -> None:
+        self.clock.t += seconds
 
     def run_until(self, end: float) -> None:
         while self.clock.t < end:
@@ -231,3 +257,38 @@ def test_switching_a_reminder_off_applies_live_and_is_saved():
     assert h.saved[-1].reminders.slouch is False
     h.run_until(60)
     assert h.notes == []
+
+def test_calibration_counts_down_then_captures_and_saves():
+    view = FakeView()
+    h = Harness(lambda now: GOOD, baseline=None, view=view)
+    h.engine.request_calibration()
+    h.run_until(10)
+    firsts = [lines[0] for lines in view.frames]
+    assert firsts[0] == "3"
+    assert firsts.index("3") < firsts.index("2") < firsts.index("1") < firsts.index("Hold still...")
+    assert view.closed
+    assert h.engine.monitor is not None
+    assert h.saved[-1].baseline.nose_y == GOOD.nose_y
+    assert h.notes[-1] == "Done. I'll let you know if you slouch."
+
+
+def test_calibration_warns_when_pose_looks_off():
+    close_up = Sample(ear=0.30, nose_y=0.50, face_width=0.62, nose_x=0.85)
+    view = FakeView()
+    h = Harness(lambda now: close_up, baseline=None, view=view)
+    h.engine.request_calibration()
+    h.run_until(10)
+    assert any("very close" in line for lines in view.frames for line in lines)  # live hint
+    assert h.notes[-1].startswith("Saved, but check this:")
+    assert "very close" in h.notes[-1] and "off to the side" in h.notes[-1]
+
+
+def test_closing_the_calibration_window_keeps_the_old_pose():
+    view = FakeView(cancel_after=5)
+    h = Harness(lambda now: Sample(ear=0.3, nose_y=0.4, face_width=0.3), view=view)
+    h.engine.request_calibration()
+    h.run_until(10)
+    assert h.engine.monitor.baseline == BASE
+    assert h.saved == []
+    assert "cancelled" in h.notes[-1]
+    assert view.closed
