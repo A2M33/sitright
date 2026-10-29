@@ -12,10 +12,12 @@ from datetime import datetime, timedelta
 from typing import Callable
 
 from . import config
-from .monitor import Baseline, Monitor, Sample, Status, Thresholds
+from .monitor import Baseline, Monitor, Sample, Status
 
 CALIBRATION_SECONDS = 3.0
-FPS = 12  # enough to catch blinks (~150 ms) without keeping a CPU core busy
+# A blink lasts 100-150 ms. At 12 FPS a quick one could fall between two frames;
+# 20 FPS gives at least two frames per blink and still leaves the CPU mostly idle.
+FPS = 20
 RETRY_SECONDS = 30.0  # how often to try the camera again after it failed
 MAX_READ_FAILURES = 10  # consecutive bad frames before we give the camera up
 IN_USE_POLL_SECONDS = 5.0  # how often to check whether a call app grabbed the camera/mic
@@ -54,8 +56,7 @@ class Engine(threading.Thread):
         camera: int,
         on_change: Callable[[str, str], None],
         on_notify: Callable[[str, str], None],
-        baseline: Baseline | None = None,
-        thresholds: Thresholds | None = None,
+        settings: config.Settings | None = None,
         open_detector: Callable[[int], object] = open_detector,
         clock: Callable[[], float] = time.monotonic,
         wall_clock: Callable[[], float] = time.time,
@@ -66,8 +67,8 @@ class Engine(threading.Thread):
         self.on_change = on_change  # (state, tooltip) -> None
         self.on_notify = on_notify  # (title, message) -> None
         self.on_menu = lambda: None  # called when something shown in the menu changes
-        self.thresholds = thresholds or Thresholds()
-        self.monitor = Monitor(baseline, self.thresholds) if baseline else None
+        self.settings = settings or config.Settings()
+        self.monitor = self._new_monitor(self.settings.baseline)
         self.detector = None
         self._open_detector = open_detector
         self._clock = clock
@@ -84,6 +85,11 @@ class Engine(threading.Thread):
         self._read_failures = 0
         self._camera_down = False  # last failure was the camera (vs. some other error)
         self._failing = False  # no good frame since the last failure
+
+    def _new_monitor(self, baseline: Baseline | None) -> Monitor | None:
+        # Shares the settings objects, so menu changes apply on the next frame.
+        s = self.settings
+        return Monitor(baseline, s.thresholds, s.reminders) if baseline else None
 
     @property
     def paused(self) -> bool:
@@ -234,8 +240,9 @@ class Engine(threading.Thread):
         except ValueError:
             self.on_notify("SitRight", "I couldn't see your face. Check the camera and try again.")
             return
-        config.save(baseline, self.thresholds)
-        self.monitor = Monitor(baseline, self.thresholds)
+        self.settings.baseline = baseline
+        config.save(self.settings)
+        self.monitor = self._new_monitor(baseline)
         self.on_notify("SitRight", "Done. I'll let you know if you slouch.")
 
     def _report(self, s: Status) -> None:

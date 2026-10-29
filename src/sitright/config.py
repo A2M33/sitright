@@ -5,12 +5,19 @@ from __future__ import annotations
 import json
 import os
 import sys
-from dataclasses import asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from .monitor import Baseline, Thresholds
+from .monitor import Baseline, Reminders, Thresholds
 
 APP = "sitright"
+
+
+@dataclass
+class Settings:
+    baseline: Baseline | None = None
+    thresholds: Thresholds = field(default_factory=Thresholds)
+    reminders: Reminders = field(default_factory=Reminders)
 
 
 def config_dir() -> Path:
@@ -37,20 +44,23 @@ def _file() -> Path:
     return config_dir() / "config.json"
 
 
-def load() -> tuple[Baseline | None, Thresholds]:
+def load() -> Settings:
     try:
         data = json.loads(_file().read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
-        return None, Thresholds()
+        return Settings()
     baseline = Baseline(**data["baseline"]) if data.get("baseline") else None
     known = Thresholds.__dataclass_fields__
     thresholds = Thresholds(**{k: v for k, v in data.get("thresholds", {}).items() if k in known})
-    return baseline, thresholds
+    known = Reminders.__dataclass_fields__
+    reminders = Reminders(**{k: v for k, v in data.get("reminders", {}).items() if k in known})
+    return Settings(baseline, thresholds, reminders)
 
 
-def save(baseline: Baseline | None, thresholds: Thresholds) -> None:
+def save(settings: Settings) -> None:
     data = {
-        "baseline": asdict(baseline) if baseline else None,
-        "thresholds": asdict(thresholds),
+        "baseline": asdict(settings.baseline) if settings.baseline else None,
+        "thresholds": asdict(settings.thresholds),
+        "reminders": asdict(settings.reminders),
     }
     _file().write_text(json.dumps(data, indent=2), encoding="utf-8")

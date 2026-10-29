@@ -85,6 +85,27 @@ class Alert(Enum):
 
 
 @dataclass
+class Reminders:
+    """Which reminders are switched on."""
+
+    slouch: bool = True
+    too_close: bool = True
+    blink: bool = False  # off by default: blink counting isn't proven on enough cameras yet
+    take_break: bool = True
+
+    def allows(self, alert: Alert) -> bool:
+        return getattr(self, REMINDER_KEYS[alert])
+
+
+REMINDER_KEYS = {
+    Alert.SLOUCH: "slouch",
+    Alert.TOO_CLOSE: "too_close",
+    Alert.LOW_BLINK: "blink",
+    Alert.TAKE_BREAK: "take_break",
+}
+
+
+@dataclass
 class Status:
     face: bool = False
     slouching: bool = False
@@ -102,6 +123,7 @@ class Status:
 class Monitor:
     baseline: Baseline
     thresholds: Thresholds = field(default_factory=Thresholds)
+    reminders: Reminders = field(default_factory=Reminders)
 
     def __post_init__(self) -> None:
         self.status = Status()
@@ -176,7 +198,7 @@ class Monitor:
         if self.status.sitting_minutes >= th.break_after_minutes:
             alerts.append(Alert.TAKE_BREAK)
 
-        return [a for a in alerts if self._cooled_down(a, now)]
+        return [a for a in alerts if self.reminders.allows(a) and self._cooled_down(a, now)]
 
     def _forget(self) -> None:
         self._bad_since.clear()

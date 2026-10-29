@@ -10,6 +10,7 @@ from sitright.engine import (
     describe_until,
     tomorrow_morning,
 )
+from sitright.config import Settings
 from sitright.monitor import Baseline, Sample
 
 BASE = Baseline(nose_y=0.50, face_width=0.30, open_ear=0.30)
@@ -58,7 +59,7 @@ class Harness:
             0,
             lambda state, tip: self.tooltips.append(tip),
             lambda title, msg: self.notes.append(msg),
-            baseline=BASE,
+            settings=Settings(baseline=BASE),
             open_detector=opener,
             clock=self.clock,
             # Wall clock starts at 2026-03-02 10:00 local time, moves with the fake clock.

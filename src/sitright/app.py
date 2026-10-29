@@ -46,13 +46,11 @@ def run_tray(camera: int = 0) -> None:
             icon.icon = make_icon(new_state)
         icon.title = tooltip
 
-    baseline, thresholds = config.load()
     engine = Engine(
         camera,
         on_change,
         lambda t, m: notify(icon, t, m),
-        baseline,
-        thresholds,
+        config.load(),
         check_in_use=inuse.others_using_camera_or_mic,
     )
 
@@ -104,13 +102,17 @@ def run_preview(camera: int = 0) -> None:
     """Camera window with live numbers. Handy for tuning and for recording a demo."""
     import cv2
 
-    baseline, thresholds = config.load()
+    settings = config.load()
     try:
         detector = open_detector(camera)
     except CameraError as exc:
         print(exc)
         return
-    monitor = Monitor(baseline, thresholds) if baseline else None
+
+    def new_monitor(baseline: Baseline | None) -> Monitor | None:
+        return Monitor(baseline, settings.thresholds, settings.reminders) if baseline else None
+
+    monitor = new_monitor(settings.baseline)
     calib: list[Sample] = []
     calib_until = 0.0
     try:
@@ -129,9 +131,9 @@ def run_preview(camera: int = 0) -> None:
                 lines.append(("Calibrating... sit straight", (0, 200, 255)))
             elif calib:
                 try:
-                    baseline = Baseline.from_samples(calib)
-                    config.save(baseline, thresholds)
-                    monitor = Monitor(baseline, thresholds)
+                    settings.baseline = Baseline.from_samples(calib)
+                    config.save(settings)
+                    monitor = new_monitor(settings.baseline)
                 except ValueError:
                     pass
                 calib = []

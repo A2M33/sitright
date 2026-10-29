@@ -4,6 +4,7 @@ from sitright.monitor import (
     Alert,
     Baseline,
     Monitor,
+    Reminders,
     Sample,
     Thresholds,
     eye_aspect_ratio,
@@ -78,11 +79,25 @@ def test_too_close():
 
 
 def test_low_blink_rate_after_full_window():
-    m = Monitor(BASE)
+    m = Monitor(BASE, reminders=Reminders(blink=True))
     alerts, _ = blink_every(m, 30, 0, 59)  # ~2 blinks/min, but window not full yet
     assert Alert.LOW_BLINK not in alerts
     alerts, _ = blink_every(m, 30, 59, 5)
     assert Alert.LOW_BLINK in alerts
+
+
+def test_blink_reminder_is_off_by_default():
+    m = Monitor(BASE)
+    alerts, _ = blink_every(m, 30, 0, 120)
+    assert m.status.blinks_per_minute is not None  # still measured for the tooltip
+    assert Alert.LOW_BLINK not in alerts
+
+
+def test_switched_off_reminder_stays_quiet():
+    m = Monitor(BASE, reminders=Reminders(slouch=False))
+    alerts, _ = feed(m, SLOUCH, 0, 60)
+    assert m.status.slouching
+    assert Alert.SLOUCH not in alerts
 
 
 def test_normal_blink_rate_is_fine():
