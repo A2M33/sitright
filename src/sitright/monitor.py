@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from statistics import median
 
@@ -76,6 +76,20 @@ class Thresholds:
     reminder_gap_seconds: float = 120.0  # any two reminders at least 2 minutes apart
     face_lost_grace_seconds: float = 1.5  # shorter face dropouts don't reset anything
     look_down_degrees: float = 15.0  # head tipped more than this = reading notes, not slouching
+
+    def scaled(self, sensitivity: str) -> "Thresholds":
+        """These thresholds loosened (relaxed) or tightened (strict) by the tray setting."""
+        f = SENSITIVITY.get(sensitivity, 1.0)
+        return replace(
+            self,
+            slouch_drop=self.slouch_drop * f,
+            too_close_ratio=1 + (self.too_close_ratio - 1) * f,
+            hold_seconds=self.hold_seconds * f,
+        )
+
+
+# Multiplies how far you may drift from your pose, and for how long, before a reminder.
+SENSITIVITY = {"relaxed": 1.4, "normal": 1.0, "strict": 0.7}
 
 
 class Alert(Enum):

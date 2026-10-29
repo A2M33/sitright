@@ -101,7 +101,6 @@ class Engine(threading.Thread):
         self._wall = wall_clock
         self._paused_until: float | None = None  # wall-clock time; inf = until resumed
         self._was_paused = False
-        self.auto_pause = True  # step aside while another app uses the camera or mic
         self._check_in_use = check_in_use
         self._busy: list[str] = []
         self._next_in_use_check = 0.0
@@ -113,9 +112,32 @@ class Engine(threading.Thread):
         self._failing = False  # no good frame since the last failure
 
     def _new_monitor(self, baseline: Baseline | None) -> Monitor | None:
-        # Shares the settings objects, so menu changes apply on the next frame.
+        # Shares the reminders object, so menu toggles apply on the next frame.
         s = self.settings
-        return Monitor(baseline, s.thresholds, s.reminders, self.gate) if baseline else None
+        return Monitor(baseline, self._thresholds(), s.reminders, self.gate) if baseline else None
+
+    def _thresholds(self):
+        return self.settings.thresholds.scaled(self.settings.sensitivity)
+
+    # Tray settings: each one applies on the next frame and is saved right away.
+
+    def set_sensitivity(self, name: str) -> None:
+        self.settings.sensitivity = name
+        if self.monitor is not None:
+            self.monitor.thresholds = self._thresholds()
+        self._save(self.settings)
+        self.on_menu()
+
+    def set_reminder(self, key: str, on: bool) -> None:
+        setattr(self.settings.reminders, key, on)
+        self._save(self.settings)
+        self.on_menu()
+
+    def set_auto_pause(self, on: bool) -> None:
+        self.settings.auto_pause = on
+        self._next_in_use_check = 0.0
+        self._save(self.settings)
+        self.on_menu()
 
     @property
     def paused(self) -> bool:
@@ -227,7 +249,7 @@ class Engine(threading.Thread):
         return max(0.0, 1 / FPS - (self._clock() - now))
 
     def _others_using_devices(self, now: float) -> list[str]:
-        if not self.auto_pause:
+        if not self.settings.auto_pause:
             return []
         if now >= self._next_in_use_check:
             self._next_in_use_check = now + IN_USE_POLL_SECONDS

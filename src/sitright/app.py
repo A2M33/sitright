@@ -17,9 +17,15 @@ from .engine import (
     find_cameras,
     open_detector,
 )
-from .monitor import Baseline, Monitor, Sample
+from .monitor import SENSITIVITY, Baseline, Monitor, Sample
 
 COLORS = {"ok": "#3fb950", "warn": "#d29922", "idle": "#6e7681"}
+REMINDER_LABELS = {
+    "slouch": "Sit up straight",
+    "too_close": "Lean back",
+    "blink": "Blink (experimental)",
+    "take_break": "Take a break",
+}
 
 
 def make_icon(state: str) -> Image.Image:
@@ -97,6 +103,25 @@ def run_tray(camera: int | None = None) -> None:
             enabled=lambda _: not cameras["scanning"],
         )
 
+    def reminder_items():
+        for key, label in REMINDER_LABELS.items():
+            yield pystray.MenuItem(
+                label,
+                lambda _i, _m, key=key: engine.set_reminder(
+                    key, not getattr(engine.settings.reminders, key)
+                ),
+                checked=lambda _m, key=key: getattr(engine.settings.reminders, key),
+            )
+
+    def sensitivity_items():
+        for name in SENSITIVITY:
+            yield pystray.MenuItem(
+                name.capitalize(),
+                lambda _i, _m, name=name: engine.set_sensitivity(name),
+                checked=lambda _m, name=name: engine.settings.sensitivity == name,
+                radio=True,
+            )
+
     def pause_for(minutes: int):
         return lambda _icon, _item: engine.pause_for(minutes * 60)
 
@@ -132,6 +157,12 @@ def run_tray(camera: int | None = None) -> None:
                     pystray.MenuItem("30 minutes", pause_for(30)),
                     pystray.MenuItem("1 hour", pause_for(60)),
                     pystray.MenuItem("Until tomorrow", lambda _i, _m: engine.pause_until_tomorrow()),
+                    pystray.Menu.SEPARATOR,
+                    pystray.MenuItem(
+                        "Pause during calls",
+                        lambda _i, _m: engine.set_auto_pause(not engine.settings.auto_pause),
+                        checked=lambda _: engine.settings.auto_pause,
+                    ),
                 ),
             ),
             pystray.MenuItem(
@@ -139,6 +170,8 @@ def run_tray(camera: int | None = None) -> None:
                 lambda _icon, _item: engine.unsnooze() if engine.snoozed else engine.snooze(),
                 checked=lambda _: engine.snoozed,
             ),
+            pystray.MenuItem("Reminders", pystray.Menu(*reminder_items())),
+            pystray.MenuItem("Sensitivity", pystray.Menu(*sensitivity_items())),
             pystray.MenuItem("Calibrate (sit straight first)", calibrate),
             pystray.MenuItem("Camera", pystray.Menu(camera_items)),
             pystray.Menu.SEPARATOR,
@@ -172,7 +205,8 @@ def run_preview(camera: int | None = None) -> None:
         return
 
     def new_monitor(baseline: Baseline | None) -> Monitor | None:
-        return Monitor(baseline, settings.thresholds, settings.reminders) if baseline else None
+        thresholds = settings.thresholds.scaled(settings.sensitivity)
+        return Monitor(baseline, thresholds, settings.reminders) if baseline else None
 
     monitor = new_monitor(settings.baseline)
     calib: list[Sample] = []

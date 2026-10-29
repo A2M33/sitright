@@ -19,6 +19,8 @@ class Settings:
     thresholds: Thresholds = field(default_factory=Thresholds)
     reminders: Reminders = field(default_factory=Reminders)
     camera: int = 0  # OpenCV camera index
+    sensitivity: str = "normal"  # relaxed / normal / strict, scales the thresholds
+    auto_pause: bool = True  # pause while another app uses the camera or mic
 
 
 def config_dir() -> Path:
@@ -55,7 +57,14 @@ def load() -> Settings:
     thresholds = Thresholds(**{k: v for k, v in data.get("thresholds", {}).items() if k in known})
     known = Reminders.__dataclass_fields__
     reminders = Reminders(**{k: v for k, v in data.get("reminders", {}).items() if k in known})
-    return Settings(baseline, thresholds, reminders, data.get("camera", 0))
+    return Settings(
+        baseline,
+        thresholds,
+        reminders,
+        data.get("camera", 0),
+        data.get("sensitivity", "normal"),
+        data.get("auto_pause", True),
+    )
 
 
 def save(settings: Settings) -> None:
@@ -64,5 +73,7 @@ def save(settings: Settings) -> None:
         "thresholds": asdict(settings.thresholds),
         "reminders": asdict(settings.reminders),
         "camera": settings.camera,
+        "sensitivity": settings.sensitivity,
+        "auto_pause": settings.auto_pause,
     }
     _file().write_text(json.dumps(data, indent=2), encoding="utf-8")

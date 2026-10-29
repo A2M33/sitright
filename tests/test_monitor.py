@@ -232,3 +232,12 @@ def test_gate_is_shared_between_monitors():
     second = Monitor(BASE, gate=gate)  # e.g. after recalibrating
     alerts, _ = feed(second, SLOUCH, 31, 60)
     assert alerts == []
+
+def test_sensitivity_scales_thresholds():
+    th = Thresholds()
+    strict, relaxed = th.scaled("strict"), th.scaled("relaxed")
+    assert strict.slouch_drop < th.slouch_drop < relaxed.slouch_drop
+    assert strict.hold_seconds < th.hold_seconds < relaxed.hold_seconds
+    assert 1 < strict.too_close_ratio < th.too_close_ratio < relaxed.too_close_ratio
+    assert th.scaled("normal") == th
+    assert th.scaled("nonsense") == th

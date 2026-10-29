@@ -179,7 +179,7 @@ def test_auto_pause_while_another_app_uses_the_camera():
 
 def test_auto_pause_can_be_turned_off():
     h = Harness(lambda now: GOOD, in_use=lambda now: ["Teams"])
-    h.engine.auto_pause = False
+    h.engine.set_auto_pause(False)
     h.run_until(10)
     assert h.engine.detector is not None
 
@@ -210,3 +210,24 @@ def test_snooze_from_the_menu_expires_after_15_minutes():
     assert h.tooltips[-1].endswith("reminders snoozed")
     h.run_until(15 * 60 + 1)
     assert not h.engine.snoozed
+
+SLOUCH = Sample(ear=0.30, nose_y=0.62, face_width=0.30)
+
+
+def test_sensitivity_applies_live_and_is_saved():
+    h = Harness(lambda now: SLOUCH)
+    h.engine.set_sensitivity("strict")
+    assert h.saved[-1].sensitivity == "strict"
+    h.run_until(22)  # strict: 30 s * 0.7 = 21 s hold
+    assert "Sit up straight. You've been slouching for a bit." in h.notes
+    # The saved numbers stay as the user wrote them; only the live copy is scaled.
+    assert h.engine.settings.thresholds.hold_seconds == 30
+
+
+def test_switching_a_reminder_off_applies_live_and_is_saved():
+    h = Harness(lambda now: SLOUCH)
+    h.run_until(5)
+    h.engine.set_reminder("slouch", False)
+    assert h.saved[-1].reminders.slouch is False
+    h.run_until(60)
+    assert h.notes == []
