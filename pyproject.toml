@@ -31,6 +31,10 @@ Homepage = "https://github.com/A2M33/sitright"
 [project.scripts]
 sitright = "sitright.__main__:main"
 
+[project.gui-scripts]
+# Same entry point with no console window, for shortcuts and autostart.
+sitright-tray = "sitright.__main__:main"
+
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 

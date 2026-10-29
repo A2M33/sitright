@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import sys
 import time
 
 from PIL import Image, ImageDraw
 
-from . import config, inuse
+from . import autostart, config, inuse
 from .engine import CALIBRATION_SECONDS, FPS, CameraError, Engine, open_detector
 from .monitor import Baseline, Monitor, Sample
 
@@ -67,6 +68,14 @@ def run_tray(camera: int = 0) -> None:
         engine.stop()
         icon.stop()
 
+    run_key = autostart.RunKey()
+
+    def toggle_autostart(_icon, _item) -> None:
+        try:
+            autostart.set_enabled(run_key, not autostart.is_enabled(run_key))
+        except OSError as exc:
+            notify(icon, "SitRight", f"Couldn't change the startup setting: {exc}")
+
     icon = pystray.Icon(
         "sitright",
         make_icon("idle"),
@@ -87,6 +96,12 @@ def run_tray(camera: int = 0) -> None:
             ),
             pystray.MenuItem("Calibrate (sit straight first)", calibrate),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem(
+                "Start with Windows",
+                toggle_autostart,
+                checked=lambda _: autostart.is_enabled(run_key),
+                visible=sys.platform == "win32",
+            ),
             pystray.MenuItem("Quit", quit_app),
         ),
     )

@@ -28,12 +28,14 @@ You get the same reminder at most once every 5 minutes. The tray icon shows gree
 
 ## Install
 
-Needs Python 3.10 or newer and a webcam.
+Needs Python 3.10 or newer and a webcam. You don't need Git: pip can install straight from the zip GitHub serves.
 
 ```bash
-pip install git+https://github.com/A2M33/sitright
-sitright
+pip install https://github.com/A2M33/sitright/archive/refs/heads/main.zip
+sitright-tray
 ```
+
+`sitright-tray` starts the app with no console window. `sitright` does the same from a terminal and takes the options listed under [Preview mode](#preview-mode). If you have Git installed, `pip install git+https://github.com/A2M33/sitright` works too.
 
 On first start it downloads MediaPipe's face model (about 4 MB). Then it asks you to sit the way you want to sit for a few seconds and saves that pose as your baseline. You can calibrate again from the tray menu.
 
@@ -41,7 +43,7 @@ On Linux you may need a tray extension for your desktop (for GNOME: AppIndicator
 
 ### Start it with your computer
 
-- Windows: press `Win + R`, type `shell:startup`, and put a shortcut to `sitright` in that folder.
+- Windows: tick "Start with Windows" in the tray menu. SitRight adds itself to your user's Run key in the registry and starts with no console window.
 - Linux: add `sitright` to your desktop's "Startup Applications".
 
 ## Preview mode
