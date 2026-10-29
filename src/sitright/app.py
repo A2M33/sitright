@@ -119,11 +119,16 @@ def run_tray(camera: int | None = None) -> None:
 
         threading.Thread(target=work, daemon=True).start()
 
+    def action(fn, *args):
+        # pystray rejects actions with more than (icon, item) parameters, so no
+        # `lambda icon, item, i=i:` tricks; bind the arguments in a closure instead.
+        return lambda _icon, _item: fn(*args)
+
     def camera_items():
         for i in cameras["found"]:
             yield pystray.MenuItem(
                 f"Camera {i}",
-                lambda _icon, _item, i=i: engine.switch_camera(i),
+                action(engine.switch_camera, i),
                 checked=lambda _item, i=i: engine.camera == i,
                 radio=True,
             )
@@ -138,9 +143,9 @@ def run_tray(camera: int | None = None) -> None:
         for key, label in REMINDER_LABELS.items():
             yield pystray.MenuItem(
                 label,
-                lambda _i, _m, key=key: engine.set_reminder(
+                action(lambda key: engine.set_reminder(
                     key, not getattr(engine.settings.reminders, key)
-                ),
+                ), key),
                 checked=lambda _m, key=key: getattr(engine.settings.reminders, key),
             )
 
@@ -148,7 +153,7 @@ def run_tray(camera: int | None = None) -> None:
         for name in SENSITIVITY:
             yield pystray.MenuItem(
                 name.capitalize(),
-                lambda _i, _m, name=name: engine.set_sensitivity(name),
+                action(engine.set_sensitivity, name),
                 checked=lambda _m, name=name: engine.settings.sensitivity == name,
                 radio=True,
             )
