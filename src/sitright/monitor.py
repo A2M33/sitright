@@ -6,10 +6,20 @@ with fake samples (see tests/test_monitor.py).
 
 from __future__ import annotations
 
+import math
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 from statistics import median
+
+
+def eye_aspect_ratio(points: list[tuple[float, float]]) -> float:
+    """Height of the eye divided by its width. Drops sharply when the eye closes."""
+    p1, p2, p3, p4, p5, p6 = points
+    width = math.dist(p1, p4)
+    if width == 0:
+        return 0.0
+    return (math.dist(p2, p6) + math.dist(p3, p5)) / (2 * width)
 
 
 @dataclass(frozen=True)

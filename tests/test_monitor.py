@@ -1,5 +1,4 @@
-from sitright.detector import eye_aspect_ratio
-from sitright.monitor import Alert, Baseline, Monitor, Sample, Thresholds
+from sitright.monitor import Alert, Baseline, Monitor, Sample, Thresholds, eye_aspect_ratio
 
 BASE = Baseline(nose_y=0.50, face_width=0.30, open_ear=0.30)
 GOOD = Sample(ear=0.30, nose_y=0.50, face_width=0.30)

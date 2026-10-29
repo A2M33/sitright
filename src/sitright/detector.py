@@ -15,7 +15,7 @@ from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python.vision import FaceLandmarker, FaceLandmarkerOptions, RunningMode
 
 from .config import cache_dir
-from .monitor import Sample
+from .monitor import Sample, eye_aspect_ratio
 
 MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/"
@@ -37,15 +37,6 @@ def model_path() -> Path:
         urllib.request.urlretrieve(MODEL_URL, tmp)
         tmp.replace(path)
     return path
-
-
-def eye_aspect_ratio(points: list[tuple[float, float]]) -> float:
-    """Height of the eye divided by its width. Drops sharply when the eye closes."""
-    p1, p2, p3, p4, p5, p6 = points
-    width = math.dist(p1, p4)
-    if width == 0:
-        return 0.0
-    return (math.dist(p2, p6) + math.dist(p3, p5)) / (2 * width)
 
 
 class Detector:
