@@ -58,17 +58,34 @@ def notify(icon, title: str, message: str) -> None:
         print(f"{title}: {message}")
 
 
+class TrayUpdater:
+    """Pushes state to the tray icon only when it changed.
+
+    The engine reports 20 times a second; every icon or title write is a call into
+    the shell, so repeating an unchanged value is wasted work.
+    """
+
+    def __init__(self, get_icon) -> None:
+        self._get_icon = get_icon
+        self.state: str | None = None
+        self.title: str | None = None
+
+    def update(self, state: str, tooltip: str) -> None:
+        icon = self._get_icon()
+        if state != self.state:
+            self.state = state
+            icon.icon = make_icon(state)
+        if tooltip != self.title:
+            self.title = tooltip
+            icon.title = tooltip[:127]  # Windows cuts tray tooltips at 127 characters
+
+
 def run_tray(camera: int | None = None) -> None:
     """`camera` overrides the saved choice for this run only."""
     import pystray
 
-    state = {"current": None}
-
-    def on_change(new_state: str, tooltip: str) -> None:
-        if state["current"] != new_state:
-            state["current"] = new_state
-            icon.icon = make_icon(new_state)
-        icon.title = tooltip
+    tray = TrayUpdater(lambda: icon)
+    on_change = tray.update
 
     settings, problems = config.read()
     for problem in problems:

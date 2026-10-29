@@ -28,6 +28,7 @@ LEFT_EYE = (33, 160, 158, 133, 153, 144)  # corner, top, top, corner, bottom, bo
 RIGHT_EYE = (362, 385, 387, 263, 373, 380)
 NOSE_TIP = 1
 LEFT_CHEEK, RIGHT_CHEEK = 234, 454
+CAPTURE_SIZE = (640, 480)
 
 
 def model_path() -> Path:
@@ -56,6 +57,10 @@ class Detector:
         if not self._cap.isOpened():
             self._cap.release()
             raise CameraError(f"Can't open camera {camera}. Is another app using it?")
+        # Many webcams default to 720p or 1080p. The face model works on a small image
+        # anyway, so 640x480 saves decoding and colour conversion on every frame.
+        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAPTURE_SIZE[0])
+        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAPTURE_SIZE[1])
         options = FaceLandmarkerOptions(
             base_options=BaseOptions(model_asset_path=str(model_path())),
             running_mode=RunningMode.VIDEO,
@@ -75,8 +80,13 @@ class Detector:
         ok, frame = self._cap.read()
         if not ok or frame is None:
             raise CameraError(f"Camera {self.camera} stopped sending pictures.")
-        self.last_frame = frame
         h, w = frame.shape[:2]
+        if w > CAPTURE_SIZE[0]:
+            # Some cameras (virtual ones especially) ignore the size request.
+            frame = cv2.resize(frame, (CAPTURE_SIZE[0], round(h * CAPTURE_SIZE[0] / w)),
+                               interpolation=cv2.INTER_AREA)
+            h, w = frame.shape[:2]
+        self.last_frame = frame
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         # VIDEO mode needs strictly increasing timestamps.
         ms = max(int(now * 1000), self._last_ms + 1)
