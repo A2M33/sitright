@@ -1,21 +1,30 @@
-# SitRight
+<p align="center"><img src="docs/header.svg" alt="SitRight" width="100%"></p>
 
-A small tray app that watches your posture through the webcam and taps you on the shoulder when you slouch, lean into the screen, stop blinking, or sit for too long.
+<p align="center">
+  <a href="https://github.com/A2M33/sitright/actions/workflows/test.yml"><img alt="tests" src="https://github.com/A2M33/sitright/actions/workflows/test.yml/badge.svg"></a>
+  <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776ab">
+  <img alt="Runs offline" src="https://img.shields.io/badge/runs-offline-3fb950">
+  <a href="https://github.com/A2M33/sitright/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-3fb950"></a>
+</p>
+
+Hours at a desk and you slouch without noticing. SitRight sits in the system tray, watches your posture through the webcam, and sends a notification when you slouch, lean into the screen, stop blinking or forget to get up.
+
+![The tray icon colours and two of the reminders](docs/overview.png)
 
 <!-- demo GIF goes here -->
 
-Everything runs on your own computer. Frames are processed in memory and thrown away; nothing is saved or uploaded.
+It runs on your computer only. SitRight reads each frame in memory, measures it and drops it. It never saves or uploads an image.
 
 ## What it reminds you about
 
 | Reminder | When |
 | --- | --- |
-| Sit up straight | your head stays noticeably lower than your calibrated pose for 8 seconds |
-| Lean back | your face gets about 25% bigger than usual, meaning you moved close to the screen |
-| Blink | fewer than 8 blinks a minute (people normally blink 15 to 20 times, much less when staring at a screen) |
+| Sit up straight | your head stays lower than your calibrated pose for 8 seconds |
+| Lean back | your face looks about 25% bigger than usual, so you've moved toward the screen |
+| Blink | fewer than 8 blinks a minute (a relaxed person blinks 15 to 20 times, far fewer while staring at a screen) |
 | Take a break | 50 minutes at the desk without leaving for at least 2 minutes |
 
-Each reminder shows up at most once every 5 minutes. The tray icon turns green when you're fine, amber when something's off, and grey when you're away or it's paused.
+You get the same reminder at most once every 5 minutes. The tray icon shows green when your posture is fine, amber while you slouch or sit too close, and grey when you've left the desk or paused it.
 
 ## Install
 
@@ -26,7 +35,7 @@ pip install git+https://github.com/A2M33/sitright
 sitright
 ```
 
-The first start downloads MediaPipe's face model (about 4 MB) and then asks you to sit the way you want to sit for a few seconds. That's your calibration. You can redo it any time from the tray menu.
+On first start it downloads MediaPipe's face model (about 4 MB). Then it asks you to sit the way you want to sit for a few seconds and saves that pose as your baseline. You can calibrate again from the tray menu.
 
 On Linux you may need a tray extension for your desktop (for GNOME: AppIndicator) and `notify-send` for notifications.
 
@@ -41,11 +50,11 @@ On Linux you may need a tray extension for your desktop (for GNOME: AppIndicator
 sitright --preview
 ```
 
-Opens a camera window with live readings: posture, distance and blinks per minute. Press `C` to calibrate and `Q` to quit. Useful to check that detection works with your camera and lighting.
+This opens a camera window with live readings for posture, distance and blinks per minute. Press `C` to calibrate and `Q` to quit. I use it to check a new camera or a dark room before trusting the tray app.
 
 Other options: `--camera 1` to pick a different camera, `--version`.
 
-If the preview shows a logo instead of you, camera 0 is probably a virtual camera from OBS, Snap Camera or similar. Try `--camera 1`, `--camera 2` and so on until you see yourself, then start the tray app with the same number.
+If the preview shows a logo instead of your face, camera 0 is a virtual camera from OBS or Snap Camera. Try `--camera 1`, `--camera 2` and so on until you see yourself, then start the tray app with that number.
 
 ## Tuning
 
@@ -65,10 +74,10 @@ Settings live in `%APPDATA%\sitright\config.json` on Windows and `~/.config/sitr
 
 [MediaPipe Face Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker) finds 478 points on your face in each frame, about 12 times a second.
 
-- **Posture** compares the height of your nose tip and the width of your face with the values saved during calibration. The webcam can't see your back, but when you slouch your head drops, and that's easy to measure.
-- **Blinks** use the eye aspect ratio: eye height divided by eye width. It falls sharply when the eye closes. The cut-off is 70% of your own open-eye value, so it adapts to your eyes and glasses.
+- **Posture.** SitRight compares the height of your nose tip and the width of your face with your calibrated values. A webcam can't see your back. Your head drops when you slouch, though, and a camera measures that well.
+- **Blinks.** It uses the eye aspect ratio, eye height divided by eye width, which drops to near zero when you close your eyes. The cut-off sits at 70% of your own open-eye value, so glasses and eye shape don't throw it off.
 
-The decision logic is in `src/sitright/monitor.py` and has no camera code in it, so it's tested with fake measurements:
+The decision logic lives in `src/sitright/monitor.py` with no camera code, so the tests feed it fake measurements:
 
 ```bash
 pip install -e ".[dev]"
@@ -77,8 +86,8 @@ pytest
 
 ## Privacy
 
-- No images are written to disk or sent anywhere.
-- The only network request is the one-time model download from Google's storage.
+- SitRight never writes an image to disk or sends one anywhere.
+- Its only network request is the one-time model download from Google's storage.
 - Pausing from the tray menu releases the camera, so its light goes off.
 
 ## License

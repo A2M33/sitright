@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="210" viewBox="0 0 900 210" role="img" aria-label="sitright: Sit up, blink, take a break. Your webcam reminds you.">
+  <rect width="900" height="210" rx="14" fill="#0d1117"/>
+  <rect x="0.5" y="0.5" width="899" height="209" rx="14" fill="none" stroke="#30363d"/>
+  <g font-family="ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace">
+    <text x="56" y="50" font-size="15" fill="#3fb950">$ sitright</text>
+    <text x="56" y="104" font-size="50" font-weight="700" fill="#e6edf3" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">sitright</text>
+    <text x="58" y="132" font-size="17" fill="#8b949e" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">Sit up, blink, take a break. Your webcam reminds you.</text>
+    <g font-size="14" text-anchor="middle"><rect x="56" y="150" width="79" height="30" rx="15" fill="#0f2a1a" stroke="#3fb950"/><text x="95.5" y="170" fill="#3fb950">Python</text><rect x="145" y="150" width="105" height="30" rx="15" fill="#161b22" stroke="#30363d"/><text x="197.5" y="170" fill="#e6edf3">MediaPipe</text><rect x="260" y="150" width="88" height="30" rx="15" fill="#161b22" stroke="#30363d"/><text x="304.0" y="170" fill="#e6edf3">Offline</text><rect x="358" y="150" width="96" height="30" rx="15" fill="#161b22" stroke="#30363d"/><text x="406.0" y="170" fill="#e6edf3">Tray app</text></g>
+    <text x="844" y="50" font-size="13" fill="#6e7681" text-anchor="end">github.com/A2M33</text>
+  </g>
+</svg>
