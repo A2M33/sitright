@@ -8,7 +8,7 @@ import time
 
 from PIL import Image, ImageDraw
 
-from . import autostart, config, inuse
+from . import autostart, config, inuse, stats
 from .engine import (
     CALIBRATION_SECONDS,
     COUNTDOWN,
@@ -80,6 +80,9 @@ def run_tray(camera: int | None = None) -> None:
         settings,
         check_in_use=inuse.others_using_camera_or_mic,
         calibration_view=CvCalibrationView,
+        stats=stats.StatsTracker(
+            settings.thresholds.away_reset_seconds, stats.load_day, stats.save_day
+        ),
     )
 
     engine.on_menu = lambda: icon.update_menu()
@@ -157,6 +160,8 @@ def run_tray(camera: int | None = None) -> None:
         make_icon("idle"),
         "SitRight",
         menu=pystray.Menu(
+            pystray.MenuItem(lambda _: engine.stats_summary(), None, enabled=False),
+            pystray.Menu.SEPARATOR,
             pystray.MenuItem(
                 lambda _: f"Resume ({engine.pause_text()})",
                 lambda _icon, _item: engine.resume(),

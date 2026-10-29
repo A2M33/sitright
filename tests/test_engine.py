@@ -292,3 +292,12 @@ def test_closing_the_calibration_window_keeps_the_old_pose():
     assert h.saved == []
     assert "cancelled" in h.notes[-1]
     assert view.closed
+
+def test_engine_feeds_daily_stats():
+    h = Harness(lambda now: GOOD if now < 100 else SLOUCH)
+    h.run_until(200)
+    stats = h.engine.stats.today
+    assert stats.day == "2026-03-02"
+    assert 45 <= stats.upright_percent <= 55
+    assert stats.reminders == {"SLOUCH": 1}
+    assert h.engine.stats_summary().startswith("Today: ")

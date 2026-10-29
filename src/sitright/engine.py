@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Callable, Protocol
 
 from . import config
+from .stats import StatsTracker
 from .monitor import (
     Baseline,
     Gate,
@@ -108,6 +109,7 @@ class Engine(threading.Thread):
         check_in_use: Callable[[], list[str]] = lambda: [],
         save: Callable[[config.Settings], None] = config.save,
         calibration_view: Callable[[], CalibrationView] = lambda: NoView(),
+        stats: StatsTracker | None = None,
         sleep: Callable[[float], object] | None = None,
     ) -> None:
         super().__init__(daemon=True)
@@ -133,6 +135,8 @@ class Engine(threading.Thread):
         self._stop_event = threading.Event()
         self._sleep = sleep or self._stop_event.wait
         self._calibration_view = calibration_view
+        self.stats = stats or StatsTracker(self.settings.thresholds.away_reset_seconds)
+        self._summary = ""
         self._calibrate = threading.Event()
         self._retry_at: float | None = None
         self._read_failures = 0
@@ -231,6 +235,10 @@ class Engine(threading.Thread):
                 self._stop_event.wait(self.step())
         finally:
             self._release()
+            self.stats.flush()
+
+    def stats_summary(self) -> str:
+        return self.stats.summary()
 
     def step(self) -> float:
         """Do one unit of work and return how long to wait before the next one."""
@@ -271,9 +279,17 @@ class Engine(threading.Thread):
             return 0.5
         self._read_failures = 0
         self._failing = self._camera_down = False
+        today = date.fromtimestamp(self._wall())
         for alert in self.monitor.update(sample, now):
             self.on_notify("SitRight", alert.value)
-        self._report(self.monitor.status)
+            self.stats.reminder(alert.name, today)
+        status = self.monitor.status
+        self.stats.observe(status.face, status.ok, now, today)
+        summary = self.stats.summary()
+        if summary != self._summary:  # changes about once a minute at most
+            self._summary = summary
+            self.on_menu()
+        self._report(status)
         return max(0.0, 1 / FPS - (self._clock() - now))
 
     def _others_using_devices(self, now: float) -> list[str]:
