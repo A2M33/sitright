@@ -1,6 +1,15 @@
 """Engine tests with a fake camera and a fake clock. No cv2 or mediapipe needed."""
 
-from sitright.engine import CAMERA_DOWN, RETRY_SECONDS, CameraError, Engine
+from datetime import datetime
+
+from sitright.engine import (
+    CAMERA_DOWN,
+    RETRY_SECONDS,
+    CameraError,
+    Engine,
+    describe_until,
+    tomorrow_morning,
+)
 from sitright.monitor import Baseline, Sample
 
 BASE = Baseline(nose_y=0.50, face_width=0.30, open_ear=0.30)
@@ -52,6 +61,8 @@ class Harness:
             baseline=BASE,
             open_detector=opener,
             clock=self.clock,
+            # Wall clock starts at 2026-03-02 10:00 local time, moves with the fake clock.
+            wall_clock=lambda: datetime(2026, 3, 2, 10, 0).timestamp() + self.clock.t,
         )
 
     def run_until(self, end: float) -> None:
@@ -110,3 +121,41 @@ def test_unexpected_error_does_not_kill_the_engine():
     h.run_until(60)  # step() must never raise
     assert h.engine.detector is not None
     assert h.engine.monitor.status.face
+
+
+def test_pause_releases_camera_and_resumes_on_time():
+    h = Harness(lambda now: GOOD)
+    h.run_until(10)
+    detector = h.engine.detector
+    h.engine.pause_for(30 * 60)
+    h.run_until(20)
+    assert h.engine.detector is None and detector.closed  # camera light goes off
+    assert h.tooltips[-1] == "SitRight: paused until 10:30"
+    h.run_until(10 + 30 * 60 + 1)
+    assert not h.engine.paused
+    assert h.engine.detector is not None
+    assert len(h.opens) == 2
+
+
+def test_resume_early():
+    h = Harness(lambda now: GOOD)
+    h.engine.pause_until_tomorrow()
+    h.run_until(5)
+    assert h.engine.paused
+    assert h.tooltips[-1] == "SitRight: paused until tomorrow 06:00"
+    h.engine.resume()
+    h.run_until(6)
+    assert h.engine.detector is not None
+
+
+def test_tomorrow_morning():
+    assert tomorrow_morning(datetime(2026, 3, 2, 22, 15)) == datetime(2026, 3, 3, 6, 0)
+    assert tomorrow_morning(datetime(2026, 3, 2, 6, 0)) == datetime(2026, 3, 3, 6, 0)
+    # Still up at 2 am: "tomorrow" means this morning.
+    assert tomorrow_morning(datetime(2026, 3, 3, 2, 0)) == datetime(2026, 3, 3, 6, 0)
+
+
+def test_describe_until():
+    now = datetime(2026, 3, 2, 22, 0)
+    assert describe_until(datetime(2026, 3, 2, 22, 30), now) == "until 22:30"
+    assert describe_until(datetime(2026, 3, 3, 6, 0), now) == "until tomorrow 06:00"

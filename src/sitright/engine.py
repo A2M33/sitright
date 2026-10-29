@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import threading
 import time
+from datetime import datetime, timedelta
 from typing import Callable
 
 from . import config
@@ -19,10 +20,25 @@ RETRY_SECONDS = 30.0  # how often to try the camera again after it failed
 MAX_READ_FAILURES = 10  # consecutive bad frames before we give the camera up
 
 CAMERA_DOWN = "SitRight: camera busy / not found"
+DAY_STARTS_AT = 6  # "pause until tomorrow" ends at this hour
 
 
 class CameraError(RuntimeError):
     """The camera could not be opened or stopped delivering frames."""
+
+
+def tomorrow_morning(now: datetime) -> datetime:
+    """When "pause until tomorrow" ends: the next 06:00 (today's, if it's still night)."""
+    morning = now.replace(hour=DAY_STARTS_AT, minute=0, second=0, microsecond=0)
+    return morning if now < morning else morning + timedelta(days=1)
+
+
+def describe_until(until: datetime, now: datetime) -> str:
+    if until.date() == now.date():
+        return f"until {until:%H:%M}"
+    if until.date() == now.date() + timedelta(days=1):
+        return f"until tomorrow {until:%H:%M}"
+    return f"until {until:%a %H:%M}"
 
 
 def open_detector(camera: int):
@@ -41,23 +57,52 @@ class Engine(threading.Thread):
         thresholds: Thresholds | None = None,
         open_detector: Callable[[int], object] = open_detector,
         clock: Callable[[], float] = time.monotonic,
+        wall_clock: Callable[[], float] = time.time,
     ) -> None:
         super().__init__(daemon=True)
         self.camera = camera
         self.on_change = on_change  # (state, tooltip) -> None
         self.on_notify = on_notify  # (title, message) -> None
-        self.paused = False
+        self.on_menu = lambda: None  # called when something shown in the menu changes
         self.thresholds = thresholds or Thresholds()
         self.monitor = Monitor(baseline, self.thresholds) if baseline else None
         self.detector = None
         self._open_detector = open_detector
         self._clock = clock
+        self._wall = wall_clock
+        self._paused_until: float | None = None  # wall-clock time; inf = until resumed
+        self._was_paused = False
         self._stop_event = threading.Event()
         self._calibrate = threading.Event()
         self._retry_at: float | None = None
         self._read_failures = 0
         self._camera_down = False  # last failure was the camera (vs. some other error)
         self._failing = False  # no good frame since the last failure
+
+    @property
+    def paused(self) -> bool:
+        return self._paused_until is not None and self._wall() < self._paused_until
+
+    def pause_for(self, seconds: float) -> None:
+        self._paused_until = self._wall() + seconds
+        self.on_menu()
+
+    def pause_until_tomorrow(self) -> None:
+        now = datetime.fromtimestamp(self._wall())
+        self._paused_until = tomorrow_morning(now).timestamp()
+        self.on_menu()
+
+    def resume(self) -> None:
+        self._paused_until = None
+        self.on_menu()
+
+    def pause_text(self) -> str:
+        if not self.paused:
+            return ""
+        if self._paused_until == float("inf"):
+            return "paused"
+        now = datetime.fromtimestamp(self._wall())
+        return "paused " + describe_until(datetime.fromtimestamp(self._paused_until), now)
 
     def request_calibration(self) -> None:
         self._calibrate.set()
@@ -77,10 +122,14 @@ class Engine(threading.Thread):
     def step(self) -> float:
         """Do one unit of work and return how long to wait before the next one."""
         now = self._clock()
-        if self.paused:
+        paused = self.paused
+        if paused != self._was_paused:
+            self._was_paused = paused
+            self.on_menu()  # a timed pause ran out: hide "Resume" again
+        if paused:
             # Release the camera so its light turns off while paused.
             self._release()
-            self.on_change("idle", "SitRight: paused")
+            self.on_change("idle", "SitRight: " + self.pause_text())
             return 0.5
         if self.detector is None and not self._open_camera(now):
             return 0.5

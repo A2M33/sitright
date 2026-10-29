@@ -49,11 +49,13 @@ def run_tray(camera: int = 0) -> None:
     baseline, thresholds = config.load()
     engine = Engine(camera, on_change, lambda t, m: notify(icon, t, m), baseline, thresholds)
 
-    def toggle_pause(_icon, _item) -> None:
-        engine.paused = not engine.paused
+    engine.on_menu = lambda: icon.update_menu()
+
+    def pause_for(minutes: int):
+        return lambda _icon, _item: engine.pause_for(minutes * 60)
 
     def calibrate(_icon, _item) -> None:
-        engine.paused = False
+        engine.resume()
         engine.request_calibration()
 
     def quit_app(_icon, _item) -> None:
@@ -65,7 +67,19 @@ def run_tray(camera: int = 0) -> None:
         make_icon("idle"),
         "SitRight",
         menu=pystray.Menu(
-            pystray.MenuItem("Pause", toggle_pause, checked=lambda _: engine.paused),
+            pystray.MenuItem(
+                lambda _: f"Resume ({engine.pause_text()})",
+                lambda _icon, _item: engine.resume(),
+                visible=lambda _: engine.paused,
+            ),
+            pystray.MenuItem(
+                "Pause",
+                pystray.Menu(
+                    pystray.MenuItem("30 minutes", pause_for(30)),
+                    pystray.MenuItem("1 hour", pause_for(60)),
+                    pystray.MenuItem("Until tomorrow", lambda _i, _m: engine.pause_until_tomorrow()),
+                ),
+            ),
             pystray.MenuItem("Calibrate (sit straight first)", calibrate),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", quit_app),
