@@ -19,7 +19,7 @@ It runs on your computer only. SitRight reads each frame in memory, measures it 
 
 | Reminder | When |
 | --- | --- |
-| Sit up straight | your head stays lower than your calibrated pose for 8 seconds |
+| Sit up straight | your head stays lower than your calibrated pose for 30 seconds |
 | Lean back | your face looks about 25% bigger than usual, so you've moved toward the screen |
 | Blink | fewer than 8 blinks a minute (a relaxed person blinks 15 to 20 times, far fewer while staring at a screen) |
 | Take a break | 50 minutes at the desk without leaving for at least 2 minutes |
@@ -64,7 +64,7 @@ Settings live in `%APPDATA%\sitright\config.json` on Windows and `~/.config/sitr
 | --- | --- | --- |
 | `slouch_drop` | 0.07 | how far your head may drop, as a fraction of the camera image height |
 | `too_close_ratio` | 1.25 | how much bigger your face may get before "lean back" |
-| `hold_seconds` | 8 | how long bad posture must last before a reminder |
+| `hold_seconds` | 30 | how long bad posture must last before a reminder |
 | `min_blinks_per_minute` | 8 | below this you get the blink reminder |
 | `break_after_minutes` | 50 | time before the break reminder |
 | `away_reset_seconds` | 120 | leaving this long counts as a break |

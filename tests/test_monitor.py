@@ -36,9 +36,17 @@ def test_good_posture_is_quiet():
 
 def test_short_slouch_is_ignored():
     m = Monitor(BASE)
-    alerts, _ = feed(m, SLOUCH, 0, 5)
+    alerts, _ = feed(m, SLOUCH, 0, 25)  # reaching for a drink, reading a line up close
     assert Alert.SLOUCH not in alerts
     assert m.status.slouching
+
+
+def test_slouch_alerts_after_30_seconds():
+    m = Monitor(BASE)
+    alerts, t = feed(m, SLOUCH, 0, 29.5)
+    assert Alert.SLOUCH not in alerts
+    alerts, _ = feed(m, SLOUCH, t, 1)
+    assert Alert.SLOUCH in alerts
 
 
 def test_long_slouch_alerts_once_per_cooldown():
@@ -49,13 +57,13 @@ def test_long_slouch_alerts_once_per_cooldown():
 
 def test_slouch_alerts_again_after_cooldown():
     m = Monitor(BASE, Thresholds(cooldown_seconds=30))
-    alerts, _ = feed(m, SLOUCH, 0, 70)
-    assert alerts.count(Alert.SLOUCH) == 3  # at 8 s, 38 s, 68 s
+    alerts, _ = feed(m, SLOUCH, 0, 100)
+    assert alerts.count(Alert.SLOUCH) == 3  # at 30 s, 60 s, 90 s
 
 
 def test_too_close():
     m = Monitor(BASE)
-    alerts, _ = feed(m, CLOSE, 0, 10)
+    alerts, _ = feed(m, CLOSE, 0, 31)
     assert Alert.TOO_CLOSE in alerts
 
 
@@ -96,19 +104,19 @@ def test_long_gap_without_frames_counts_as_a_break():
 
 def test_leaving_resets_bad_posture_timer():
     m = Monitor(BASE)
-    _, t = feed(m, SLOUCH, 0, 6)
+    _, t = feed(m, SLOUCH, 0, 20)
     _, t = feed(m, None, t, 2)  # gone for 2 s, longer than the grace period
     assert not m.status.face
-    alerts, _ = feed(m, SLOUCH, t, 6)
+    alerts, _ = feed(m, SLOUCH, t, 20)
     assert Alert.SLOUCH not in alerts
 
 
 def test_one_missed_frame_keeps_the_slouch_timer():
     m = Monitor(BASE)
-    _, t = feed(m, SLOUCH, 0, 6)
+    _, t = feed(m, SLOUCH, 0, 20)
     m.update(None, t)  # the model lost the face for one frame
-    alerts, _ = feed(m, SLOUCH, t + 0.1, 3)
-    assert Alert.SLOUCH in alerts  # 6 s + 3 s of slouching passes the 8 s hold
+    alerts, _ = feed(m, SLOUCH, t + 0.1, 11)
+    assert Alert.SLOUCH in alerts  # 20 s + 11 s of slouching passes the 30 s hold
 
 
 def test_short_dropouts_keep_the_blink_window():

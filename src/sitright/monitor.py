@@ -54,7 +54,7 @@ class Baseline:
 class Thresholds:
     slouch_drop: float = 0.07  # nose this much lower than baseline (fraction of frame height)
     too_close_ratio: float = 1.25  # face this much wider than baseline
-    hold_seconds: float = 8.0  # bad posture must last this long before we say anything
+    hold_seconds: float = 30.0  # bad posture must last this long before we say anything
     min_blinks_per_minute: float = 8.0  # healthy is ~15-20; staring at screens drops it a lot
     blink_window_seconds: float = 60.0
     break_after_minutes: float = 50.0
