@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from typing import Callable
 
 from . import config
-from .monitor import Baseline, Monitor, Sample, Status
+from .monitor import Baseline, Gate, Monitor, Sample, Status
 
 CALIBRATION_SECONDS = 3.0
 # A blink lasts 100-150 ms. At 12 FPS a quick one could fall between two frames;
@@ -24,6 +24,7 @@ IN_USE_POLL_SECONDS = 5.0  # how often to check whether a call app grabbed the c
 
 CAMERA_DOWN = "SitRight: camera busy / not found"
 DAY_STARTS_AT = 6  # "pause until tomorrow" ends at this hour
+SNOOZE_SECONDS = 15 * 60
 
 
 class CameraError(RuntimeError):
@@ -89,6 +90,8 @@ class Engine(threading.Thread):
         self.on_notify = on_notify  # (title, message) -> None
         self.on_menu = lambda: None  # called when something shown in the menu changes
         self.settings = settings or config.Settings()
+        self.gate = Gate()  # min gap between reminders and snooze, kept across recalibration
+        self._was_snoozed = False
         self.monitor = self._new_monitor(self.settings.baseline)
         self.detector = None
         self._camera_changed = False
@@ -112,7 +115,7 @@ class Engine(threading.Thread):
     def _new_monitor(self, baseline: Baseline | None) -> Monitor | None:
         # Shares the settings objects, so menu changes apply on the next frame.
         s = self.settings
-        return Monitor(baseline, s.thresholds, s.reminders) if baseline else None
+        return Monitor(baseline, s.thresholds, s.reminders, self.gate) if baseline else None
 
     @property
     def paused(self) -> bool:
@@ -129,6 +132,18 @@ class Engine(threading.Thread):
 
     def resume(self) -> None:
         self._paused_until = None
+        self.on_menu()
+
+    @property
+    def snoozed(self) -> bool:
+        return self.gate.snoozed(self._clock())
+
+    def snooze(self) -> None:
+        self.gate.snooze(self._clock(), SNOOZE_SECONDS)
+        self.on_menu()
+
+    def unsnooze(self) -> None:
+        self.gate.unsnooze()
         self.on_menu()
 
     def switch_camera(self, index: int) -> None:
@@ -173,10 +188,10 @@ class Engine(threading.Thread):
         if self._camera_changed:
             self._camera_changed = False
             self._release()
-        paused = self.paused
-        if paused != self._was_paused:
-            self._was_paused = paused
-            self.on_menu()  # a timed pause ran out: hide "Resume" again
+        paused, snoozed = self.paused, self.snoozed
+        if (paused, snoozed) != (self._was_paused, self._was_snoozed):
+            self._was_paused, self._was_snoozed = paused, snoozed
+            self.on_menu()  # a timed pause or snooze ran out: update the menu
         if paused:
             # Release the camera so its light turns off while paused.
             self._release()
@@ -298,4 +313,6 @@ class Engine(threading.Thread):
         if s.blinks_per_minute is not None:
             parts.append(f"{s.blinks_per_minute:.0f} blinks/min")
         parts.append(f"sitting {s.sitting_minutes:.0f} min")
+        if self.snoozed:
+            parts.append("reminders snoozed")
         self.on_change("ok" if s.ok else "warn", "SitRight: " + ", ".join(parts))

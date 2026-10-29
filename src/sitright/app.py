@@ -134,6 +134,11 @@ def run_tray(camera: int | None = None) -> None:
                     pystray.MenuItem("Until tomorrow", lambda _i, _m: engine.pause_until_tomorrow()),
                 ),
             ),
+            pystray.MenuItem(
+                "Snooze 15 min",
+                lambda _icon, _item: engine.unsnooze() if engine.snoozed else engine.snooze(),
+                checked=lambda _: engine.snoozed,
+            ),
             pystray.MenuItem("Calibrate (sit straight first)", calibrate),
             pystray.MenuItem("Camera", pystray.Menu(camera_items)),
             pystray.Menu.SEPARATOR,

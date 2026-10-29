@@ -201,3 +201,12 @@ def test_find_cameras_lists_working_ones_and_the_current_one():
     # Camera 0 is busy because we hold it; it still belongs in the list.
     assert find_cameras(lambda i: i in (1, 3), current=0) == [0, 1, 3]
     assert find_cameras(lambda i: False, current=7) == [7]
+
+def test_snooze_from_the_menu_expires_after_15_minutes():
+    h = Harness(lambda now: GOOD)
+    h.engine.snooze()
+    h.run_until(10)
+    assert h.engine.snoozed
+    assert h.tooltips[-1].endswith("reminders snoozed")
+    h.run_until(15 * 60 + 1)
+    assert not h.engine.snoozed

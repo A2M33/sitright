@@ -73,6 +73,7 @@ class Thresholds:
     break_after_minutes: float = 50.0
     away_reset_seconds: float = 120.0  # leaving this long counts as a break
     cooldown_seconds: float = 300.0  # same reminder at most every 5 minutes
+    reminder_gap_seconds: float = 120.0  # any two reminders at least 2 minutes apart
     face_lost_grace_seconds: float = 1.5  # shorter face dropouts don't reset anything
     look_down_degrees: float = 15.0  # head tipped more than this = reading notes, not slouching
 
@@ -106,6 +107,31 @@ REMINDER_KEYS = {
 
 
 @dataclass
+class Gate:
+    """Rules shared by all reminder types: a minimum gap between any two, and snooze.
+
+    Lives outside Monitor so a snooze survives recalibration.
+    """
+
+    last_shown: float | None = None
+    snoozed_until: float | None = None
+
+    def snooze(self, now: float, seconds: float) -> None:
+        self.snoozed_until = now + seconds
+
+    def unsnooze(self) -> None:
+        self.snoozed_until = None
+
+    def snoozed(self, now: float) -> bool:
+        return self.snoozed_until is not None and now < self.snoozed_until
+
+    def allows(self, now: float, gap: float) -> bool:
+        if self.snoozed(now):
+            return False
+        return self.last_shown is None or now - self.last_shown >= gap
+
+
+@dataclass
 class Status:
     face: bool = False
     slouching: bool = False
@@ -124,6 +150,7 @@ class Monitor:
     baseline: Baseline
     thresholds: Thresholds = field(default_factory=Thresholds)
     reminders: Reminders = field(default_factory=Reminders)
+    gate: Gate = field(default_factory=lambda: Gate())
 
     def __post_init__(self) -> None:
         self.status = Status()
@@ -198,7 +225,14 @@ class Monitor:
         if self.status.sitting_minutes >= th.break_after_minutes:
             alerts.append(Alert.TAKE_BREAK)
 
-        return [a for a in alerts if self.reminders.allows(a) and self._cooled_down(a, now)]
+        due = [a for a in alerts if self.reminders.allows(a) and self._due(a, now)]
+        if not due or not self.gate.allows(now, th.reminder_gap_seconds):
+            return []
+        # One notification at a time; anything else still due waits for the next gap.
+        alert = due[0]
+        self._mark_shown(alert, now)
+        self.gate.last_shown = now
+        return [alert]
 
     def _forget(self) -> None:
         self._bad_since.clear()
@@ -224,12 +258,12 @@ class Monitor:
         else:
             self.status.blinks_per_minute = None
 
-    def _cooled_down(self, alert: Alert, now: float) -> bool:
+    def _due(self, alert: Alert, now: float) -> bool:
         last = self._last_alert.get(alert)
-        if last is not None and now - last < self.thresholds.cooldown_seconds:
-            return False
+        return last is None or now - last >= self.thresholds.cooldown_seconds
+
+    def _mark_shown(self, alert: Alert, now: float) -> None:
         self._last_alert[alert] = now
         if alert is Alert.TAKE_BREAK:
-            # Snooze: ask again after another full stretch, not every 5 minutes.
+            # Ask again after another half stretch, not every 5 minutes.
             self._last_alert[alert] = now + self.thresholds.break_after_minutes * 60 / 2
-        return True

@@ -3,6 +3,7 @@ import math
 from sitright.monitor import (
     Alert,
     Baseline,
+    Gate,
     Monitor,
     Reminders,
     Sample,
@@ -67,7 +68,7 @@ def test_long_slouch_alerts_once_per_cooldown():
 
 
 def test_slouch_alerts_again_after_cooldown():
-    m = Monitor(BASE, Thresholds(cooldown_seconds=30))
+    m = Monitor(BASE, Thresholds(cooldown_seconds=30, reminder_gap_seconds=0))
     alerts, _ = feed(m, SLOUCH, 0, 100)
     assert alerts.count(Alert.SLOUCH) == 3  # at 30 s, 60 s, 90 s
 
@@ -202,3 +203,32 @@ def test_baseline_takes_median_pitch():
     samples = [Sample(0.3, 0.5, 0.3, p) for p in (1.0, 3.0, 2.0)] + [Sample(0.3, 0.5, 0.3)]
     assert Baseline.from_samples(samples).pitch == 2.0
     assert Baseline.from_samples([GOOD]).pitch is None
+
+def test_reminders_of_different_kinds_wait_for_the_global_gap():
+    m = Monitor(BASE)
+    slouch_and_close = Sample(ear=0.30, nose_y=0.62, face_width=0.42)
+    alerts, t = feed(m, slouch_and_close, 0, 31)
+    assert alerts == [Alert.SLOUCH]  # not both at once
+    alerts, t = feed(m, slouch_and_close, t, 60)
+    assert alerts == []  # 2 minutes haven't passed
+    alerts, _ = feed(m, slouch_and_close, t, 61)
+    assert alerts == [Alert.TOO_CLOSE]  # it was waiting, not dropped
+
+
+def test_snooze_holds_back_all_reminders():
+    gate = Gate()
+    m = Monitor(BASE, gate=gate)
+    gate.snooze(0, 15 * 60)
+    alerts, t = feed(m, SLOUCH, 0, 15 * 60 - 1, step=1)
+    assert alerts == []
+    alerts, _ = feed(m, SLOUCH, t, 5, step=1)
+    assert alerts == [Alert.SLOUCH]
+
+
+def test_gate_is_shared_between_monitors():
+    gate = Gate()
+    first = Monitor(BASE, gate=gate)
+    feed(first, SLOUCH, 0, 31)
+    second = Monitor(BASE, gate=gate)  # e.g. after recalibrating
+    alerts, _ = feed(second, SLOUCH, 31, 60)
+    assert alerts == []
