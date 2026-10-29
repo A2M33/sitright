@@ -60,6 +60,7 @@ class Thresholds:
     break_after_minutes: float = 50.0
     away_reset_seconds: float = 120.0  # leaving this long counts as a break
     cooldown_seconds: float = 300.0  # same reminder at most every 5 minutes
+    face_lost_grace_seconds: float = 1.5  # shorter face dropouts don't reset anything
 
 
 class Alert(Enum):
@@ -107,6 +108,10 @@ class Monitor:
             # stayed, so count it as a break rather than nagging the moment we're back.
             self._forget()
         if sample is None:
+            if self._last_seen is not None and now - self._last_seen < th.face_lost_grace_seconds:
+                # The model misses a frame now and then (a hand on the chin, a quick
+                # turn). Keep the timers; only a longer absence counts as gone.
+                return []
             self.status.face = False
             self._bad_since.clear()
             self._face_since = None

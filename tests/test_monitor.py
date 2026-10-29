@@ -97,9 +97,28 @@ def test_long_gap_without_frames_counts_as_a_break():
 def test_leaving_resets_bad_posture_timer():
     m = Monitor(BASE)
     _, t = feed(m, SLOUCH, 0, 6)
-    m.update(None, t)
-    alerts, _ = feed(m, SLOUCH, t + 0.1, 6)
+    _, t = feed(m, None, t, 2)  # gone for 2 s, longer than the grace period
+    assert not m.status.face
+    alerts, _ = feed(m, SLOUCH, t, 6)
     assert Alert.SLOUCH not in alerts
+
+
+def test_one_missed_frame_keeps_the_slouch_timer():
+    m = Monitor(BASE)
+    _, t = feed(m, SLOUCH, 0, 6)
+    m.update(None, t)  # the model lost the face for one frame
+    alerts, _ = feed(m, SLOUCH, t + 0.1, 3)
+    assert Alert.SLOUCH in alerts  # 6 s + 3 s of slouching passes the 8 s hold
+
+
+def test_short_dropouts_keep_the_blink_window():
+    m = Monitor(BASE)
+    _, t = blink_every(m, 4, 0, 61)
+    assert m.status.blinks_per_minute is not None
+    _, t = feed(m, None, t, 1.0)  # under the 1.5 s grace period
+    m.update(GOOD, t)
+    assert m.status.face
+    assert m.status.blinks_per_minute is not None  # not back to "measuring..."
 
 
 def test_eye_aspect_ratio():
