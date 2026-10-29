@@ -16,7 +16,7 @@ from mediapipe.tasks.python.vision import FaceLandmarker, FaceLandmarkerOptions,
 
 from .config import cache_dir
 from .engine import CameraError
-from .monitor import Sample, eye_aspect_ratio
+from .monitor import Sample, eye_aspect_ratio, head_pitch
 
 MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/"
@@ -51,6 +51,7 @@ class Detector:
             base_options=BaseOptions(model_asset_path=str(model_path())),
             running_mode=RunningMode.VIDEO,
             num_faces=1,
+            output_facial_transformation_matrixes=True,  # head pose, for head_pitch()
         )
         try:
             self._landmarker = FaceLandmarker.create_from_options(options)
@@ -86,10 +87,12 @@ class Detector:
             eye_aspect_ratio([pt(i) for i in LEFT_EYE])
             + eye_aspect_ratio([pt(i) for i in RIGHT_EYE])
         ) / 2
+        matrices = result.facial_transformation_matrixes
         return Sample(
             ear=ear,
             nose_y=lm[NOSE_TIP].y,
             face_width=math.dist(pt(LEFT_CHEEK), pt(RIGHT_CHEEK)),
+            pitch=head_pitch(matrices[0]) if matrices else None,
         )
 
     def close(self) -> None:

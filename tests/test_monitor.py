@@ -1,4 +1,14 @@
-from sitright.monitor import Alert, Baseline, Monitor, Sample, Thresholds, eye_aspect_ratio
+import math
+
+from sitright.monitor import (
+    Alert,
+    Baseline,
+    Monitor,
+    Sample,
+    Thresholds,
+    eye_aspect_ratio,
+    head_pitch,
+)
 
 BASE = Baseline(nose_y=0.50, face_width=0.30, open_ear=0.30)
 GOOD = Sample(ear=0.30, nose_y=0.50, face_width=0.30)
@@ -134,3 +144,46 @@ def test_eye_aspect_ratio():
     closed_eye = [(0, 0), (1, 0.1), (2, 0.1), (3, 0), (2, -0.1), (1, -0.1)]
     assert eye_aspect_ratio(open_eye) > eye_aspect_ratio(closed_eye) * 5
     assert eye_aspect_ratio([(0, 0)] * 6) == 0.0
+
+
+def rotation_x(degrees):
+    a = math.radians(degrees)
+    c, s = math.cos(a), math.sin(a)
+    return [[1, 0, 0, 0], [0, c, -s, 0], [0, s, c, 0], [0, 0, 0, 1]]
+
+
+def test_head_pitch_from_transformation_matrix():
+    assert head_pitch(rotation_x(0)) == 0
+    assert math.isclose(head_pitch(rotation_x(25)), 25)
+    assert math.isclose(head_pitch(rotation_x(-10)), -10)
+
+
+POSED = Baseline(nose_y=0.50, face_width=0.30, open_ear=0.30, pitch=2.0)
+
+
+def test_looking_down_at_notes_is_not_slouching():
+    m = Monitor(POSED)
+    reading = Sample(ear=0.30, nose_y=0.62, face_width=0.30, pitch=-28.0)
+    alerts, _ = feed(m, reading, 0, 60)
+    assert Alert.SLOUCH not in alerts
+    assert m.status.looking_down
+    assert not m.status.slouching
+
+
+def test_sinking_while_facing_the_screen_is_slouching():
+    m = Monitor(POSED)
+    sunk = Sample(ear=0.30, nose_y=0.62, face_width=0.30, pitch=-4.0)
+    alerts, _ = feed(m, sunk, 0, 31)
+    assert Alert.SLOUCH in alerts
+
+
+def test_old_baseline_without_pitch_still_works():
+    m = Monitor(BASE)  # calibrated before pitch existed
+    alerts, _ = feed(m, Sample(ear=0.30, nose_y=0.62, face_width=0.30, pitch=-28.0), 0, 31)
+    assert Alert.SLOUCH in alerts
+
+
+def test_baseline_takes_median_pitch():
+    samples = [Sample(0.3, 0.5, 0.3, p) for p in (1.0, 3.0, 2.0)] + [Sample(0.3, 0.5, 0.3)]
+    assert Baseline.from_samples(samples).pitch == 2.0
+    assert Baseline.from_samples([GOOD]).pitch is None

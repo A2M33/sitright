@@ -22,6 +22,15 @@ def eye_aspect_ratio(points: list[tuple[float, float]]) -> float:
     return (math.dist(p2, p6) + math.dist(p3, p5)) / (2 * width)
 
 
+def head_pitch(matrix) -> float:
+    """Nod angle in degrees from MediaPipe's 4x4 facial transformation matrix.
+
+    That matrix rotates the canonical face into camera space. The rotation about
+    the x axis is how far the head tips up or down; 0 means facing the camera.
+    """
+    return math.degrees(math.atan2(matrix[2][1], matrix[2][2]))
+
+
 @dataclass(frozen=True)
 class Sample:
     """What the detector measured in one frame. Coordinates are 0..1 of the frame."""
@@ -29,6 +38,7 @@ class Sample:
     ear: float  # eye aspect ratio, average of both eyes (small = closed)
     nose_y: float  # vertical position of the nose tip
     face_width: float  # cheek-to-cheek distance, grows as you lean in
+    pitch: float | None = None  # head nod in degrees, if the model gave us a pose
 
 
 @dataclass
@@ -38,15 +48,18 @@ class Baseline:
     nose_y: float
     face_width: float
     open_ear: float
+    pitch: float | None = None  # None for poses calibrated before 0.2.0
 
     @classmethod
     def from_samples(cls, samples: list[Sample]) -> "Baseline":
         if not samples:
             raise ValueError("no face seen during calibration")
+        pitches = [s.pitch for s in samples if s.pitch is not None]
         return cls(
             nose_y=median(s.nose_y for s in samples),
             face_width=median(s.face_width for s in samples),
             open_ear=median(s.ear for s in samples),
+            pitch=median(pitches) if pitches else None,
         )
 
 
@@ -61,6 +74,7 @@ class Thresholds:
     away_reset_seconds: float = 120.0  # leaving this long counts as a break
     cooldown_seconds: float = 300.0  # same reminder at most every 5 minutes
     face_lost_grace_seconds: float = 1.5  # shorter face dropouts don't reset anything
+    look_down_degrees: float = 15.0  # head tipped more than this = reading notes, not slouching
 
 
 class Alert(Enum):
@@ -75,6 +89,7 @@ class Status:
     face: bool = False
     slouching: bool = False
     too_close: bool = False
+    looking_down: bool = False  # head tipped well away from the calibrated angle
     blinks_per_minute: float | None = None
     sitting_minutes: float = 0.0
 
@@ -130,7 +145,16 @@ class Monitor:
 
         self._track_blink(sample, now)
 
-        self.status.slouching = sample.nose_y - self.baseline.nose_y > th.slouch_drop
+        self.status.looking_down = (
+            sample.pitch is not None
+            and self.baseline.pitch is not None
+            and abs(sample.pitch - self.baseline.pitch) > th.look_down_degrees
+        )
+        # Tipping your head to read notes moves the nose down too. Only a head that
+        # sinks while still facing the screen counts as slouching.
+        self.status.slouching = (
+            sample.nose_y - self.baseline.nose_y > th.slouch_drop and not self.status.looking_down
+        )
         self.status.too_close = sample.face_width > self.baseline.face_width * th.too_close_ratio
         self.status.sitting_minutes = (now - self._seated_since) / 60
 

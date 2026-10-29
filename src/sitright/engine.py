@@ -247,6 +247,8 @@ class Engine(threading.Thread):
             parts.append("slouching")
         if s.too_close:
             parts.append("too close")
+        if s.looking_down:
+            parts.append("looking down")
         if s.blinks_per_minute is not None:
             parts.append(f"{s.blinks_per_minute:.0f} blinks/min")
         parts.append(f"sitting {s.sitting_minutes:.0f} min")

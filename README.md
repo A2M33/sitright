@@ -65,6 +65,7 @@ Settings live in `%APPDATA%\sitright\config.json` on Windows and `~/.config/sitr
 | `slouch_drop` | 0.07 | how far your head may drop, as a fraction of the camera image height |
 | `too_close_ratio` | 1.25 | how much bigger your face may get before "lean back" |
 | `hold_seconds` | 30 | how long bad posture must last before a reminder |
+| `look_down_degrees` | 15 | tip your head further than this from your calibrated angle and SitRight treats it as reading notes, not slouching |
 | `min_blinks_per_minute` | 8 | below this you get the blink reminder |
 | `break_after_minutes` | 50 | time before the break reminder |
 | `away_reset_seconds` | 120 | leaving this long counts as a break |
@@ -74,7 +75,7 @@ Settings live in `%APPDATA%\sitright\config.json` on Windows and `~/.config/sitr
 
 [MediaPipe Face Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker) finds 478 points on your face in each frame, about 12 times a second.
 
-- **Posture.** SitRight compares the height of your nose tip and the width of your face with your calibrated values. A webcam can't see your back. Your head drops when you slouch, though, and a camera measures that well.
+- **Posture.** SitRight compares the height of your nose tip and the width of your face with your calibrated values. A webcam can't see your back. Your head drops when you slouch, though, and a camera measures that well. MediaPipe also reports the angle of your head. If you tip it down to read notes, your nose drops as well, so SitRight ignores the drop while your head angle sits more than 15 degrees off your calibrated one.
 - **Blinks.** It uses the eye aspect ratio, eye height divided by eye width, which drops to near zero when you close your eyes. The cut-off sits at 70% of your own open-eye value, so glasses and eye shape don't throw it off.
 
 The decision logic lives in `src/sitright/monitor.py` with no camera code, so the tests feed it fake measurements:
