@@ -50,6 +50,26 @@ def open_detector(camera: int):
     return Detector(camera)
 
 
+def camera_works(index: int) -> bool:
+    from .detector import camera_works
+
+    return camera_works(index)
+
+
+def find_cameras(
+    works: Callable[[int], bool] = camera_works, current: int | None = None, upto: int = 5
+) -> list[int]:
+    """Camera indices that open and deliver a picture.
+
+    `current` is always listed: we may be holding it open ourselves, so a second
+    open can fail even though it works fine.
+    """
+    found = [i for i in range(upto) if i == current or works(i)]
+    if current is not None and current not in found:
+        found.append(current)
+    return sorted(found)
+
+
 class Engine(threading.Thread):
     def __init__(
         self,
@@ -61,6 +81,7 @@ class Engine(threading.Thread):
         clock: Callable[[], float] = time.monotonic,
         wall_clock: Callable[[], float] = time.time,
         check_in_use: Callable[[], list[str]] = lambda: [],
+        save: Callable[[config.Settings], None] = config.save,
     ) -> None:
         super().__init__(daemon=True)
         self.camera = camera
@@ -70,6 +91,8 @@ class Engine(threading.Thread):
         self.settings = settings or config.Settings()
         self.monitor = self._new_monitor(self.settings.baseline)
         self.detector = None
+        self._camera_changed = False
+        self._save = save
         self._open_detector = open_detector
         self._clock = clock
         self._wall = wall_clock
@@ -108,6 +131,19 @@ class Engine(threading.Thread):
         self._paused_until = None
         self.on_menu()
 
+    def switch_camera(self, index: int) -> None:
+        """Use another camera from the next frame on, and remember it."""
+        if index == self.camera:
+            return
+        self.camera = self.settings.camera = index
+        self._save(self.settings)
+        self._camera_changed = True  # the engine thread releases the old camera
+        self._retry_at = None
+        if self.monitor is not None:
+            # The calibrated pose belongs to the old camera's angle and distance.
+            self.request_calibration()
+        self.on_menu()
+
     def pause_text(self) -> str:
         if not self.paused:
             return ""
@@ -134,6 +170,9 @@ class Engine(threading.Thread):
     def step(self) -> float:
         """Do one unit of work and return how long to wait before the next one."""
         now = self._clock()
+        if self._camera_changed:
+            self._camera_changed = False
+            self._release()
         paused = self.paused
         if paused != self._was_paused:
             self._was_paused = paused

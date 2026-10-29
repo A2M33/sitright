@@ -40,6 +40,15 @@ def model_path() -> Path:
     return path
 
 
+def camera_works(index: int) -> bool:
+    """Open camera `index`, grab one picture, let go."""
+    cap = cv2.VideoCapture(index)
+    try:
+        return cap.isOpened() and cap.read()[0]
+    finally:
+        cap.release()
+
+
 class Detector:
     def __init__(self, camera: int = 0) -> None:
         self.camera = camera

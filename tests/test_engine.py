@@ -8,6 +8,7 @@ from sitright.engine import (
     CameraError,
     Engine,
     describe_until,
+    find_cameras,
     tomorrow_morning,
 )
 from sitright.config import Settings
@@ -48,9 +49,12 @@ class Harness:
         self.opens: list[float] = []
         self.tooltips: list[str] = []
         self.notes: list[str] = []
+        self.cameras: list[int] = []
+        self.saved: list[Settings] = []
 
         def opener(camera):
             self.opens.append(self.clock.t)
+            self.cameras.append(camera)
             if open_fails(self.clock.t):
                 raise CameraError(f"Can't open camera {camera}.")
             return FakeDetector(script)
@@ -65,6 +69,7 @@ class Harness:
             # Wall clock starts at 2026-03-02 10:00 local time, moves with the fake clock.
             wall_clock=lambda: datetime(2026, 3, 2, 10, 0).timestamp() + self.clock.t,
             check_in_use=lambda: in_use(self.clock.t),
+            save=self.saved.append,
         )
 
     def run_until(self, end: float) -> None:
@@ -177,3 +182,22 @@ def test_auto_pause_can_be_turned_off():
     h.engine.auto_pause = False
     h.run_until(10)
     assert h.engine.detector is not None
+
+def test_switch_camera_reopens_saves_and_recalibrates():
+    h = Harness(lambda now: GOOD)
+    h.run_until(5)
+    old = h.engine.detector
+    h.engine.switch_camera(2)
+    assert h.saved and h.saved[-1].camera == 2
+    assert h.engine._calibrate.is_set()  # old pose doesn't fit the new camera angle
+    h.engine._calibrate.clear()  # (calibration itself needs a real camera)
+    h.run_until(6)
+    assert old.closed
+    assert h.cameras == [0, 2]
+
+
+def test_find_cameras_lists_working_ones_and_the_current_one():
+    assert find_cameras(lambda i: i in (1, 3)) == [1, 3]
+    # Camera 0 is busy because we hold it; it still belongs in the list.
+    assert find_cameras(lambda i: i in (1, 3), current=0) == [0, 1, 3]
+    assert find_cameras(lambda i: False, current=7) == [7]

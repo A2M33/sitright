@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 import sys
+import threading
 import time
 
 from PIL import Image, ImageDraw
 
 from . import autostart, config, inuse
-from .engine import CALIBRATION_SECONDS, FPS, CameraError, Engine, open_detector
+from .engine import (
+    CALIBRATION_SECONDS,
+    FPS,
+    CameraError,
+    Engine,
+    find_cameras,
+    open_detector,
+)
 from .monitor import Baseline, Monitor, Sample
 
 COLORS = {"ok": "#3fb950", "warn": "#d29922", "idle": "#6e7681"}
@@ -36,7 +44,8 @@ def notify(icon, title: str, message: str) -> None:
         print(f"{title}: {message}")
 
 
-def run_tray(camera: int = 0) -> None:
+def run_tray(camera: int | None = None) -> None:
+    """`camera` overrides the saved choice for this run only."""
     import pystray
 
     state = {"current": None}
@@ -47,15 +56,46 @@ def run_tray(camera: int = 0) -> None:
             icon.icon = make_icon(new_state)
         icon.title = tooltip
 
+    settings = config.load()
     engine = Engine(
-        camera,
+        settings.camera if camera is None else camera,
         on_change,
         lambda t, m: notify(icon, t, m),
-        config.load(),
+        settings,
         check_in_use=inuse.others_using_camera_or_mic,
     )
 
     engine.on_menu = lambda: icon.update_menu()
+
+    cameras = {"found": [engine.camera], "scanning": False}
+
+    def scan_cameras() -> None:
+        # Opening each camera takes a moment, so do it off the tray's thread.
+        def work() -> None:
+            cameras["scanning"] = True
+            icon.update_menu()
+            try:
+                cameras["found"] = find_cameras(current=engine.camera)
+            finally:
+                cameras["scanning"] = False
+                icon.update_menu()
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def camera_items():
+        for i in cameras["found"]:
+            yield pystray.MenuItem(
+                f"Camera {i}",
+                lambda _icon, _item, i=i: engine.switch_camera(i),
+                checked=lambda _item, i=i: engine.camera == i,
+                radio=True,
+            )
+        yield pystray.Menu.SEPARATOR
+        yield pystray.MenuItem(
+            lambda _: "Looking for cameras..." if cameras["scanning"] else "Look for cameras again",
+            lambda _icon, _item: scan_cameras(),
+            enabled=lambda _: not cameras["scanning"],
+        )
 
     def pause_for(minutes: int):
         return lambda _icon, _item: engine.pause_for(minutes * 60)
@@ -95,6 +135,7 @@ def run_tray(camera: int = 0) -> None:
                 ),
             ),
             pystray.MenuItem("Calibrate (sit straight first)", calibrate),
+            pystray.MenuItem("Camera", pystray.Menu(camera_items)),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
                 "Start with Windows",
@@ -109,17 +150,18 @@ def run_tray(camera: int = 0) -> None:
     def setup(icon) -> None:
         icon.visible = True
         engine.start()
+        scan_cameras()
 
     icon.run(setup)
 
 
-def run_preview(camera: int = 0) -> None:
+def run_preview(camera: int | None = None) -> None:
     """Camera window with live numbers. Handy for tuning and for recording a demo."""
     import cv2
 
     settings = config.load()
     try:
-        detector = open_detector(camera)
+        detector = open_detector(settings.camera if camera is None else camera)
     except CameraError as exc:
         print(exc)
         return

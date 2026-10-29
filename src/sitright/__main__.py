@@ -8,7 +8,12 @@ def main() -> None:
         prog="sitright",
         description="Reminds you to sit up straight, blink and take breaks, using your webcam.",
     )
-    parser.add_argument("--camera", type=int, default=0, help="camera index (default: 0)")
+    parser.add_argument(
+        "--camera",
+        type=int,
+        default=None,
+        help="camera index for this run (default: the one picked in the tray menu, else 0)",
+    )
     parser.add_argument(
         "--preview", action="store_true", help="open a camera window with live readings"
     )

@@ -18,6 +18,7 @@ class Settings:
     baseline: Baseline | None = None
     thresholds: Thresholds = field(default_factory=Thresholds)
     reminders: Reminders = field(default_factory=Reminders)
+    camera: int = 0  # OpenCV camera index
 
 
 def config_dir() -> Path:
@@ -54,7 +55,7 @@ def load() -> Settings:
     thresholds = Thresholds(**{k: v for k, v in data.get("thresholds", {}).items() if k in known})
     known = Reminders.__dataclass_fields__
     reminders = Reminders(**{k: v for k, v in data.get("reminders", {}).items() if k in known})
-    return Settings(baseline, thresholds, reminders)
+    return Settings(baseline, thresholds, reminders, data.get("camera", 0))
 
 
 def save(settings: Settings) -> None:
@@ -62,5 +63,6 @@ def save(settings: Settings) -> None:
         "baseline": asdict(settings.baseline) if settings.baseline else None,
         "thresholds": asdict(settings.thresholds),
         "reminders": asdict(settings.reminders),
+        "camera": settings.camera,
     }
     _file().write_text(json.dumps(data, indent=2), encoding="utf-8")
