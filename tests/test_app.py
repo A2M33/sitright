@@ -58,3 +58,16 @@ def test_tray_menu_builds_and_its_items_work(tmp_path, monkeypatch):
     assert {"Pause", "Reminders", "Sensitivity", "Camera", "Snooze 15 min", "Quit"} <= set(seen["names"])
     saved = (tmp_path / "sitright" / "config.json").read_text(encoding="utf-8")
     assert '"sensitivity": "strict"' in saved
+
+def test_closing_a_window_the_user_already_closed_is_not_an_error(monkeypatch):
+    cv2 = pytest.importorskip("cv2")
+    from sitright.app import CvCalibrationView
+
+    def gone(_title):
+        raise cv2.error("NULL window")
+
+    monkeypatch.setattr(cv2, "destroyWindow", gone)
+    monkeypatch.setattr(cv2, "waitKey", lambda _ms: -1)
+    view = CvCalibrationView()
+    view._shown = True
+    view.close()  # used to raise, which the engine then reported as a camera failure

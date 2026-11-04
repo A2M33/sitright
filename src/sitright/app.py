@@ -289,7 +289,10 @@ class CvCalibrationView:
         import cv2
 
         if self._shown:
-            cv2.destroyWindow(self.TITLE)
+            try:
+                cv2.destroyWindow(self.TITLE)
+            except cv2.error:
+                pass  # the user already closed it with its X button
             cv2.waitKey(1)
 
 
