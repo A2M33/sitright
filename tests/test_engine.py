@@ -342,3 +342,66 @@ def test_camera_is_let_go_while_there_is_no_calibration():
     h.engine.request_calibration()
     h.run_until(20)
     assert h.engine.monitor is not None
+
+
+def test_a_dropped_frame_does_not_end_calibration():
+    def script(now):
+        return CameraError("glitch") if 4.0 <= now < 4.2 else GOOD  # during the capture
+
+    view = FakeView()
+    h = Harness(script, baseline=None, view=view)
+    h.engine.request_calibration()
+    h.run_until(10)
+    assert h.engine.monitor is not None  # the window used to vanish with no pose saved
+    assert h.notes[-1] == "Done. I'll let you know if you slouch."
+    assert view.closed
+
+
+def test_calibration_starts_over_when_the_camera_comes_back():
+    def script(now):
+        return CameraError("unplugged") if 1 <= now < 30 else GOOD
+
+    h = Harness(script, baseline=None)
+    h.engine.request_calibration()
+    h.run_until(5)
+    assert h.engine.detector is None
+    assert h.tooltips[-1] == CAMERA_DOWN
+    h.run_until(60)
+    assert h.engine.monitor is not None
+    assert h.notes[-1] == "Done. I'll let you know if you slouch."
+
+
+def test_quitting_during_calibration_keeps_the_saved_pose():
+    class QuitView(FakeView):
+        def show(self, frame, lines):
+            if lines[0] == "Hold still...":
+                h.engine.stop()
+            return super().show(frame, lines)
+
+    h = Harness(lambda now: Sample(ear=0.3, nose_y=0.4, face_width=0.3), view=QuitView())
+    h.engine.request_calibration()
+    h.engine.step()
+    assert h.saved == []
+    assert h.engine.monitor.baseline == BASE
+    assert h.notes == []  # the tray icon is going away
+
+
+def test_a_face_seen_in_a_few_frames_is_not_enough_to_calibrate():
+    h = Harness(lambda now: GOOD if 4.0 <= now < 4.1 else None, baseline=None)
+    h.engine.request_calibration()
+    h.run_until(10)
+    assert h.engine.monitor is None
+    assert "couldn't see your face" in h.notes[-1]
+
+
+def test_cancelling_the_first_calibration_does_not_mention_an_old_pose():
+    h = Harness(lambda now: GOOD, baseline=None, view=FakeView(cancel_after=2))
+    h.engine.request_calibration()
+    h.run_until(5)
+    assert h.notes[-1] == "Calibration cancelled. Calibrate from the tray menu."
+
+
+def test_switching_camera_calibrates_even_without_a_saved_pose():
+    h = Harness(lambda now: GOOD, baseline=None)
+    h.engine.switch_camera(1)
+    assert h.engine._calibrate.is_set()

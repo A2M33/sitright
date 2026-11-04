@@ -26,6 +26,7 @@ from .monitor import (
 
 COUNTDOWN = 3  # seconds of 3-2-1 before capture starts
 CALIBRATION_SECONDS = 3.0
+MIN_CALIBRATION_SAMPLES = 5  # fewer frames with a face than this is too little to trust
 # A blink lasts 100-150 ms. At 12 FPS a quick one could fall between two frames;
 # 20 FPS gives at least two frames per blink and still leaves the CPU mostly idle.
 FPS = 20
@@ -209,9 +210,8 @@ class Engine(threading.Thread):
         self._save(self.settings)
         self._camera_changed = True  # the engine thread releases the old camera
         self._retry_at = None
-        if self.monitor is not None:
-            # The calibrated pose belongs to the old camera's angle and distance.
-            self.request_calibration()
+        # A calibrated pose belongs to the old camera's angle and distance.
+        self.request_calibration()
         self.on_menu()
 
     def pause_text(self) -> str:
@@ -355,6 +355,7 @@ class Engine(threading.Thread):
         self.on_change("idle", "SitRight: calibrating")
         view = self._calibration_view()
         samples: list[Sample] = []
+        failures = 0
         start = self._clock()
         try:
             while not self._stop_event.is_set():
@@ -362,25 +363,39 @@ class Engine(threading.Thread):
                 phase, count = calibration_phase(now - start, COUNTDOWN, CALIBRATION_SECONDS)
                 if phase == "done":
                     break
-                sample = self.detector.read(now)
+                try:
+                    sample = self.detector.read(now)
+                except CameraError as exc:
+                    # Same rule as normal running: a dropped frame is no reason to give up.
+                    failures += 1
+                    if failures >= MAX_READ_FAILURES:
+                        self._calibrate.set()  # start over once the camera is back
+                        self._camera_failed(now, exc)
+                        return
+                    self._sleep(1 / FPS)
+                    continue
+                failures = 0
                 if phase == "capture" and sample:
                     samples.append(sample)
                 if phase == "countdown":
                     hints = pose_warnings([sample]) if sample else ["I can't see your face yet."]
                     lines = [str(count), "Sit the way you want to sit"] + hints[:1]
                 else:
-                    lines = ["Hold still...", "Look at the screen"]
+                    hint = "Look at the screen" if sample else "I can't see your face."
+                    lines = ["Hold still...", hint]
                 if not view.show(getattr(self.detector, "last_frame", None), lines):
-                    self.on_notify("SitRight", "Calibration cancelled. Your old pose is kept.")
+                    kept = "Your old pose is kept." if self.monitor else "Calibrate from the tray menu."
+                    self.on_notify("SitRight", f"Calibration cancelled. {kept}")
                     return
                 self._sleep(1 / FPS)
         finally:
             view.close()
-        try:
-            baseline = Baseline.from_samples(samples)
-        except ValueError:
+        if self._stop_event.is_set():
+            return  # quitting: a cut-off capture must not replace the saved pose
+        if len(samples) < MIN_CALIBRATION_SAMPLES:
             self.on_notify("SitRight", "I couldn't see your face. Check the camera and try again.")
             return
+        baseline = Baseline.from_samples(samples)
         self.settings.baseline = baseline
         self._save(self.settings)
         self.monitor = self._new_monitor(baseline)
