@@ -1,6 +1,6 @@
 import argparse
 
-from . import __version__
+from . import __version__, single_instance
 
 
 def main() -> None:
@@ -21,12 +21,23 @@ def main() -> None:
     args = parser.parse_args()
 
     # Imported late so --help and --version work instantly.
-    from .app import run_preview, run_tray
-
     if args.preview:
+        from .app import run_preview
+
         run_preview(args.camera)
-    else:
+        return
+    release = single_instance.acquire()
+    if release is None:
+        single_instance.tell_user(
+            "SitRight is already running. Look for its icon in the system tray."
+        )
+        return
+    from .app import run_tray
+
+    try:
         run_tray(args.camera)
+    finally:
+        release()
 
 
 if __name__ == "__main__":
