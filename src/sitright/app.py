@@ -116,6 +116,7 @@ def run_tray(camera: int | None = None) -> None:
         lambda t, m: notify(icon, t, m),
         settings,
         check_in_use=inuse.others_using_camera_or_mic,
+        check_locked=inuse.screen_locked,
         calibration_view=CvCalibrationView,
         stats=stats.StatsTracker(
             settings.thresholds.away_reset_seconds, stats.load_day, stats.save_day

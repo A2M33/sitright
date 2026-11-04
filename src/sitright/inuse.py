@@ -36,6 +36,11 @@ ALWAYS_ON = (
     "voicemeeter8x64.exe",
 )
 
+WTS_CURRENT_SESSION = 0xFFFFFFFF
+WTS_SESSION_INFO_EX = 25
+WTS_SESSIONSTATE_LOCK = 0
+SESSION_FLAGS_OFFSET = 16  # in WTSINFOEXW: Level, padding, SessionId, SessionState, SessionFlags
+
 # A key snapshot: value names map to ints, subkey names map to nested dicts.
 Key = dict
 
@@ -128,6 +133,34 @@ def snapshot(device: str) -> Key:
             return read(key)
     except OSError:
         return {}
+
+
+def screen_locked() -> bool:
+    """True while this Windows session is locked. False if we can't tell, or elsewhere."""
+    if sys.platform != "win32":
+        return False
+    import ctypes
+    from ctypes import wintypes
+
+    wtsapi = ctypes.WinDLL("wtsapi32")
+    wtsapi.WTSQuerySessionInformationW.argtypes = [
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    wtsapi.WTSFreeMemory.argtypes = [ctypes.c_void_p]
+    buffer, size = ctypes.c_void_p(), wintypes.DWORD()
+    if not wtsapi.WTSQuerySessionInformationW(
+        None, WTS_CURRENT_SESSION, WTS_SESSION_INFO_EX, ctypes.byref(buffer), ctypes.byref(size)
+    ):
+        return False
+    try:
+        flags = ctypes.c_long.from_address(buffer.value + SESSION_FLAGS_OFFSET).value
+    finally:
+        wtsapi.WTSFreeMemory(buffer)
+    return flags == WTS_SESSIONSTATE_LOCK
 
 
 def others_using_camera_or_mic(ignore: Iterable[str] = ALWAYS_ON) -> list[str]:

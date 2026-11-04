@@ -222,7 +222,7 @@ class Monitor:
         if last is not None and now - last >= th.away_reset_seconds:
             # No frames for a long while (camera gone, paused): we can't tell if you
             # stayed, so count it as a break rather than nagging the moment we're back.
-            self._forget()
+            self.forget()
         if sample is None:
             if self._last_seen is not None and now - self._last_seen < th.face_lost_grace_seconds:
                 # The model misses a frame now and then (a hand on the chin, a quick
@@ -292,7 +292,8 @@ class Monitor:
         self._bad_since.clear()
         self._eyes_closed = False
 
-    def _forget(self) -> None:
+    def forget(self) -> None:
+        """Start over as if you just sat down."""
         self._bad_since.clear()
         self._face_since = None
         self._blinks.clear()

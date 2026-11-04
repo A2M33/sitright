@@ -66,8 +66,10 @@ class Harness:
         in_use=lambda now: [],
         baseline=BASE,
         view=None,
+        locked=lambda now: False,
     ) -> None:
         self.clock = Clock()
+        self.slept = 0.0  # wall-clock time the fake clock didn't see
         self.opens: list[float] = []
         self.tooltips: list[str] = []
         self.notes: list[str] = []
@@ -89,8 +91,9 @@ class Harness:
             open_detector=opener,
             clock=self.clock,
             # Wall clock starts at 2026-03-02 10:00 local time, moves with the fake clock.
-            wall_clock=lambda: datetime(2026, 3, 2, 10, 0).timestamp() + self.clock.t,
+            wall_clock=lambda: datetime(2026, 3, 2, 10, 0).timestamp() + self.clock.t + self.slept,
             check_in_use=lambda: in_use(self.clock.t),
+            check_locked=lambda: locked(self.clock.t),
             save=self.saved.append,
             calibration_view=lambda: view or FakeView(),
             sleep=self.advance,
@@ -429,3 +432,41 @@ def test_a_failed_save_is_reported_and_is_not_a_camera_failure():
     assert h.engine.detector is not None
     assert any("Couldn't save your settings" in note for note in h.notes)
     assert h.tooltips[-1].startswith("SitRight: sitting")
+
+
+def test_camera_is_released_while_the_screen_is_locked():
+    h = Harness(lambda now: GOOD, locked=lambda now: 300 <= now < 600)
+    h.run_until(310)
+    assert h.engine.detector is None  # the light used to stay on behind the lock screen
+    assert h.tooltips[-1] == "SitRight: screen locked"
+    h.run_until(610)
+    assert h.engine.detector is not None
+    assert h.engine.monitor.status.sitting_minutes < 1  # 5 minutes away reset the timer
+    assert h.engine.stats.today.breaks == 1
+
+
+def test_a_quick_lock_does_not_count_as_a_break():
+    h = Harness(lambda now: GOOD, locked=lambda now: 300 <= now < 330)
+    h.run_until(340)
+    assert h.engine.monitor.status.sitting_minutes > 5
+    assert h.engine.stats.today.breaks == 0
+
+
+def test_a_failing_lock_check_is_ignored():
+    def broken(now):
+        raise OSError("no session info")
+
+    h = Harness(lambda now: GOOD, locked=broken)
+    h.run_until(5)
+    assert h.engine.detector is not None
+
+
+def test_waking_from_sleep_reopens_the_camera_and_counts_as_a_break():
+    h = Harness(lambda now: GOOD)
+    h.run_until(300)
+    stale = h.engine.detector
+    h.slept = 3600.0  # a clock that stops during sleep sees no gap here
+    h.run_until(301)
+    assert stale.closed
+    assert len(h.opens) == 2
+    assert h.engine.monitor.status.sitting_minutes < 1

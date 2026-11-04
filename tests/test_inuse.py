@@ -2,7 +2,7 @@
 
 import os
 
-from sitright.inuse import apps_in_use, own_executables
+from sitright.inuse import apps_in_use, own_executables, screen_locked
 
 OWN = r"C:\Users\me\AppData\Local\Programs\Python\Python312\pythonw.exe"
 
@@ -62,3 +62,7 @@ def test_nothing_in_use():
 def test_own_executables_cover_console_and_windowed_python():
     names = {os.path.basename(p).lower() for p in own_executables()}
     assert {"python.exe", "pythonw.exe"} <= names
+
+
+def test_screen_locked_answers_without_raising():
+    assert screen_locked() in (True, False)

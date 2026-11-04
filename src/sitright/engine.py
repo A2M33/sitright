@@ -33,6 +33,7 @@ FPS = 20
 RETRY_SECONDS = 30.0  # how often to try the camera again after it failed
 MAX_READ_FAILURES = 10  # consecutive bad frames before we give the camera up
 IN_USE_POLL_SECONDS = 5.0  # how often to check whether a call app grabbed the camera/mic
+LOCK_POLL_SECONDS = 2.0  # how often to check whether the screen is locked
 
 CAMERA_DOWN = "SitRight: camera busy / not found"
 DAY_STARTS_AT = 6  # "pause until tomorrow" ends at this hour
@@ -113,6 +114,7 @@ class Engine(threading.Thread):
         clock: Callable[[], float] = time.monotonic,
         wall_clock: Callable[[], float] = time.time,
         check_in_use: Callable[[], list[str]] = lambda: [],
+        check_locked: Callable[[], bool] = lambda: False,
         save: Callable[[config.Settings], None] = config.save,
         calibration_view: Callable[[], CalibrationView] = lambda: NoView(),
         stats: StatsTracker | None = None,
@@ -138,6 +140,10 @@ class Engine(threading.Thread):
         self._check_in_use = check_in_use
         self._busy: list[str] = []
         self._next_in_use_check = 0.0
+        self._check_locked = check_locked
+        self._locked = False
+        self._next_lock_check = 0.0
+        self._last_wall: float | None = None
         self._stop_event = threading.Event()
         self._sleep = sleep or self._stop_event.wait
         self._calibration_view = calibration_view
@@ -259,6 +265,7 @@ class Engine(threading.Thread):
     def step(self) -> float:
         """Do one unit of work and return how long to wait before the next one."""
         now = self._clock()
+        self._notice_sleep()
         if self._camera_changed:
             self._camera_changed = False
             self._release()
@@ -271,6 +278,12 @@ class Engine(threading.Thread):
             self._release()
             self.on_change("idle", "SitRight: " + self.pause_text())
             return 0.5
+        if self._screen_locked(now):
+            # Nobody to watch, and a lit camera on a locked PC looks wrong.
+            self._release()
+            self._nobody_here(now)
+            self.on_change("idle", "SitRight: screen locked")
+            return 1.0
         busy = self._others_using_devices(now)
         if busy:
             self._release()
@@ -309,6 +322,32 @@ class Engine(threading.Thread):
             self.on_menu()
         self._report(status)
         return max(0.0, 1 / FPS - (self._clock() - now))
+
+    def _notice_sleep(self) -> None:
+        """A long jump in wall-clock time means the PC slept. Monotonic clocks may not show it."""
+        wall = self._wall()
+        last, self._last_wall = self._last_wall, wall
+        if last is None or wall - last < self.settings.thresholds.away_reset_seconds:
+            return
+        self._release()  # camera handles rarely survive sleep; don't wait for reads to fail
+        self._retry_at = None
+        if self.monitor is not None:
+            self.monitor.forget()
+
+    def _screen_locked(self, now: float) -> bool:
+        if now >= self._next_lock_check:
+            self._next_lock_check = now + LOCK_POLL_SECONDS
+            try:
+                self._locked = bool(self._check_locked())
+            except Exception:
+                self._locked = False
+        return self._locked
+
+    def _nobody_here(self, now: float) -> None:
+        """Count this moment as "no face", without a camera, so breaks still add up."""
+        if self.monitor is not None:
+            self.monitor.update(None, now)
+        self.stats.observe(False, False, now, date.fromtimestamp(self._wall()))
 
     def _others_using_devices(self, now: float) -> list[str]:
         if not self.settings.auto_pause:
