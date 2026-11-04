@@ -1,4 +1,5 @@
 import json
+import threading
 
 import pytest
 
@@ -106,3 +107,65 @@ def test_save_fills_in_missing_threshold_keys(cfg_dir):
     saved = json.loads((cfg_dir / "config.json").read_text(encoding="utf-8"))
     assert saved["thresholds"]["hold_seconds"] == 50
     assert saved["thresholds"]["slouch_drop"] == 0.07
+
+
+def test_a_crash_while_saving_leaves_the_old_file_whole(cfg_dir, monkeypatch):
+    config.save(config.Settings(camera=3))
+
+    def boom(_src, _dst):
+        raise OSError("power cut")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(config.os, "replace", boom)
+        with pytest.raises(OSError):
+            config.save(config.Settings(camera=4))
+    assert config.read() == (config.Settings(camera=3), [])
+
+
+def test_saves_from_two_threads_never_mix(cfg_dir):
+    errors = []
+
+    def spam(camera):
+        try:
+            for _ in range(40):
+                config.save(config.Settings(camera=camera))
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=spam, args=(i,)) for i in (1, 2, 3)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    settings, problems = config.read()
+    assert settings.camera in (1, 2, 3) and problems == []
+
+
+def test_saving_over_a_damaged_file_keeps_a_copy(cfg_dir):
+    cfg_dir.mkdir()
+    broken = '{"thresholds": {"hold_seconds": 45,}}'  # one trailing comma, hours of tuning
+    (cfg_dir / "config.json").write_text(broken, encoding="utf-8")
+    config.save(config.Settings(camera=1))
+    assert (cfg_dir / "config.json.bad").read_text(encoding="utf-8") == broken
+    assert config.read() == (config.Settings(camera=1), [])
+
+
+def test_a_save_that_cant_read_the_file_leaves_it_alone(cfg_dir, monkeypatch):
+    config.save(config.Settings(camera=1))
+
+    def locked():
+        raise PermissionError("in use")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(config, "_read_raw", locked)
+        with pytest.raises(OSError):  # used to carry on and wipe the hand-edited thresholds
+            config.save(config.Settings(camera=2))
+    assert config.load().camera == 1
+
+
+def test_an_absurdly_long_number_is_a_problem_not_a_crash(cfg_dir):
+    cfg_dir.mkdir()
+    (cfg_dir / "config.json").write_text('{"camera": ' + "1" * 5000 + "}", encoding="utf-8")
+    s, problems = config.read()
+    assert s == config.Settings() and problems

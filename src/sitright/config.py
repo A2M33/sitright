@@ -9,13 +9,18 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
+import threading
+import time
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 from .monitor import SENSITIVITY, Baseline, Reminders, Thresholds
 
 APP = "sitright"
+
+_save_lock = threading.Lock()  # the tray and the engine thread both save
 
 
 @dataclass
@@ -50,6 +55,27 @@ def cache_dir() -> Path:
 
 def _file() -> Path:
     return config_dir() / "config.json"
+
+
+def write_atomic(path: Path, text: str) -> None:
+    """Replace `path` in one step, so a crash or power cut can't leave half a file."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    for attempt in range(3):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:  # a virus scanner or editor has the file open for a moment
+            if attempt == 2:
+                raise
+            time.sleep(0.1)
+
+
+def _keep_damaged_copy() -> None:
+    try:
+        shutil.copyfile(_file(), _file().with_name("config.json.bad"))
+    except OSError:
+        pass
 
 
 def _valid(value, kind: str) -> bool:
@@ -129,7 +155,7 @@ def read() -> tuple[Settings, list[str]]:
         data = _read_raw()
     except FileNotFoundError:
         return Settings(), []
-    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
+    except (ValueError, OSError) as exc:
         return Settings(), [f"Couldn't read config.json ({exc}); using defaults."]
     return parse(data)
 
@@ -139,12 +165,25 @@ def load() -> Settings:
 
 
 def save(settings: Settings) -> None:
-    """Write what the app manages; leave hand-edited thresholds and unknown keys alone."""
+    """Write what the app manages; leave hand-edited thresholds and unknown keys alone.
+
+    A file we can't parse is copied to config.json.bad first, so a typo doesn't cost the
+    user their tuning. Raises OSError if the file can't be read or written.
+    """
+    with _save_lock:
+        _save(settings)
+
+
+def _save(settings: Settings) -> None:
     try:
         data = _read_raw()
-    except (OSError, ValueError):
+    except FileNotFoundError:
+        data = {}
+    except ValueError:
+        _keep_damaged_copy()
         data = {}
     if not isinstance(data, dict):
+        _keep_damaged_copy()
         data = {}
     data["baseline"] = asdict(settings.baseline) if settings.baseline else None
     data["reminders"] = asdict(settings.reminders)
@@ -159,4 +198,4 @@ def save(settings: Settings) -> None:
     for key, value in asdict(settings.thresholds).items():
         thresholds.setdefault(key, value)
     data["thresholds"] = thresholds
-    _file().write_text(json.dumps(data, indent=2), encoding="utf-8")
+    write_atomic(_file(), json.dumps(data, indent=2))

@@ -72,3 +72,19 @@ def test_not_enough_data():
     assert DayStats("d", seen_seconds=100, upright_seconds=50, breaks=1).summary() == (
         "Today: 50% upright, 1 break"
     )
+
+
+def test_a_crash_while_saving_keeps_the_days_numbers(tmp_path, monkeypatch):
+    from sitright import config, stats
+
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    stats.save_day(DayStats("2026-03-02", seen_seconds=600, upright_seconds=300))
+
+    def boom(_src, _dst):
+        raise OSError("power cut")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(config.os, "replace", boom)
+        stats.save_day(DayStats("2026-03-02", seen_seconds=601, upright_seconds=301))
+    assert stats.load_day("2026-03-02").seen_seconds == 600

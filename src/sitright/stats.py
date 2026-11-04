@@ -126,9 +126,11 @@ def load_day(day: str) -> DayStats | None:
 
 
 def save_day(stats: DayStats) -> None:
+    from .config import write_atomic
+
     data = asdict(stats)
     data["upright_percent"] = stats.upright_percent  # handy when reading the file yourself
     try:
-        (stats_dir() / f"{stats.day}.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
+        write_atomic(stats_dir() / f"{stats.day}.json", json.dumps(data, indent=2))
     except OSError:
         pass  # stats are nice to have; never stop the app over them
