@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import ctypes
 import sys
 import threading
 import time
+from typing import Callable
 
 from PIL import Image, ImageDraw
 
@@ -36,6 +38,10 @@ REMINDER_LABELS = {
     "blink": "Blink (experimental)",
     "take_break": "Take a break",
 }
+SYSTEM_DPI_AWARE = 1
+Line = tuple[str, tuple[int, int, int]]  # text and its BGR colour
+WHITE = (255, 255, 255)
+AMBER = (0, 200, 255)
 PREVIEW_TITLE = "SitRight preview (C = calibrate, Q = quit)"
 MAX_NOTIFY_TITLE = 63
 MAX_NOTIFY_TEXT = 255
@@ -107,6 +113,7 @@ def run_tray(camera: int | None = None) -> None:
     """`camera` overrides the saved choice for this run only."""
     import pystray
 
+    enable_high_dpi()
     tray = TrayUpdater(lambda: icon)
     on_change = tray.update
 
@@ -261,14 +268,77 @@ def run_tray(camera: int | None = None) -> None:
         finish(engine)
 
 
-def draw_lines(frame, lines: list[tuple[str, tuple[int, int, int]]], scale: float = 0.8) -> None:
+def enable_high_dpi() -> None:
+    """Sharp menus and tray icon on scaled displays. Call before any window exists."""
+    if sys.platform != "win32":
+        return
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(SYSTEM_DPI_AWARE)
+    except (OSError, AttributeError):
+        pass  # already set, or an older Windows that scales the windows itself
+
+
+def display_scale() -> float:
+    """1.0 at 100% display scaling. Our cv2 windows are sized by hand, so they need this."""
+    if sys.platform != "win32":
+        return 1.0
+    try:
+        return ctypes.windll.user32.GetDpiForSystem() / 96
+    except (OSError, AttributeError):
+        return 1.0
+
+
+def fit_size(width: int, height: int, box: tuple[int, int]) -> tuple[int, int]:
+    """The largest size inside `box` with the proportions of width x height."""
+    ratio = min(box[0] / width, box[1] / height)
+    return round(width * ratio), round(height * ratio)
+
+
+def wrap_text(text: str, max_width: int, measure: Callable[[str], int]) -> list[str]:
+    """Split `text` at spaces into lines that fit. A word too wide by itself stays whole."""
+    lines: list[str] = []
+    line = ""
+    for word in text.split():
+        longer = f"{line} {word}" if line else word
+        if line and measure(longer) > max_width:
+            lines.append(line)
+            line = word
+        else:
+            line = longer
+    return lines + [line] if line else lines
+
+
+def text_weight(scale: float) -> int:
+    return max(1, round(scale * 2))
+
+
+def layout_lines(lines: list[Line], scale: float, max_width: int) -> list[Line]:
+    """`lines` wrapped to `max_width` pixels, each piece keeping its colour."""
     import cv2
 
-    step = int(40 * scale)
-    for i, (text, color) in enumerate(lines):
-        org = (16, step + i * step)
-        cv2.putText(frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), 4, cv2.LINE_AA)
-        cv2.putText(frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, color, 2, cv2.LINE_AA)
+    def measure(text: str) -> int:
+        return cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, text_weight(scale))[0][0]
+
+    return [(part, color) for text, color in lines for part in wrap_text(text, max_width, measure)]
+
+
+def draw_lines(frame, lines: list[Line], scale: float = 0.8, bottom: bool = False) -> None:
+    """Write `lines` on a darkened band across the top (or bottom) of the frame."""
+    import cv2
+
+    if not lines:
+        return
+    height, width = frame.shape[:2]
+    margin, step = round(20 * scale), round(40 * scale)
+    wrapped = layout_lines(lines, scale, width - 2 * margin)
+    band = min(height, step * len(wrapped) + margin // 2)
+    top = height - band if bottom else 0
+    frame[top : top + band] = frame[top : top + band] * 0.35
+    for i, (text, color) in enumerate(wrapped):
+        org = (margin, top + step * (i + 1) - step // 4)
+        cv2.putText(
+            frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, color, text_weight(scale), cv2.LINE_AA
+        )
 
 
 def draw_countdown(frame, number: str) -> None:
@@ -279,34 +349,53 @@ def draw_countdown(frame, number: str) -> None:
     (tw, th), _ = cv2.getTextSize(number, font, scale, thick)
     org = ((w - tw) // 2, (h + th) // 2)
     cv2.putText(frame, number, org, font, scale, (0, 0, 0), thick + 6, cv2.LINE_AA)
-    cv2.putText(frame, number, org, font, scale, (255, 255, 255), thick, cv2.LINE_AA)
+    cv2.putText(frame, number, org, font, scale, WHITE, thick, cv2.LINE_AA)
+
+
+def center_window(title: str, width: int, height: int) -> None:
+    import cv2
+
+    if sys.platform == "win32":  # other desktops place new windows sensibly by themselves
+        metrics = ctypes.windll.user32.GetSystemMetrics
+        cv2.moveWindow(title, max(0, (metrics(0) - width) // 2), max(0, (metrics(1) - height) // 2))
 
 
 class CvCalibrationView:
     """A small always-on-top window showing the camera, the countdown and hints."""
 
     TITLE = "SitRight calibration (Esc = cancel)"
-    SIZE = (480, 360)
+    SIZE = (480, 360)  # at 100% display scaling
 
     def __init__(self) -> None:
         self._shown = False
+        self._scale = display_scale()
+
+    def compose(self, frame, lines: list[str]):
+        """The picture to show: mirrored like a selfie camera, with the text on top."""
+        import cv2
+
+        h, w = frame.shape[:2]
+        box = (round(self.SIZE[0] * self._scale), round(self.SIZE[1] * self._scale))
+        img = cv2.resize(cv2.flip(frame, 1), fit_size(w, h, box))
+        text = lines
+        if lines and lines[0].isdigit():
+            draw_countdown(img, lines[0])
+            text = lines[1:]
+        colored = [(t, AMBER if i else WHITE) for i, t in enumerate(text)]
+        draw_lines(img, colored, scale=0.6 * self._scale, bottom=True)
+        return img
 
     def show(self, frame, lines: list[str]) -> bool:
         import cv2
 
         if frame is None:
             return True
-        img = cv2.resize(cv2.flip(frame, 1), self.SIZE)  # mirrored, like a selfie camera
-        text = lines
-        if lines and lines[0].isdigit():
-            draw_countdown(img, lines[0])
-            text = lines[1:]
-        draw_lines(img, [(t, (0, 200, 255) if i else (255, 255, 255)) for i, t in enumerate(text)],
-                   scale=0.6)
+        img = self.compose(frame, lines)
         cv2.imshow(self.TITLE, img)
         if not self._shown:
             self._shown = True
             cv2.setWindowProperty(self.TITLE, cv2.WND_PROP_TOPMOST, 1)
+            center_window(self.TITLE, img.shape[1], img.shape[0])
         if cv2.waitKey(1) & 0xFF == 27:
             return False
         # The user closed the window with its X button.
@@ -327,6 +416,8 @@ def run_preview(camera: int | None = None) -> None:
     """Camera window with live numbers. Handy for tuning and for recording a demo."""
     import cv2
 
+    enable_high_dpi()
+    scale = display_scale()
     settings, problems = config.read()
     for problem in problems:
         print("config.json:", problem)
@@ -359,18 +450,20 @@ def run_preview(camera: int | None = None) -> None:
                 continue
             failures = 0
             frame = cv2.flip(detector.last_frame, 1)
-            lines: list[tuple[str, tuple[int, int, int]]] = []
+            if scale != 1:
+                frame = cv2.resize(frame, None, fx=scale, fy=scale)
+            lines: list[Line] = []
             phase = "idle"
             if calib_start is not None:
                 phase, count = calibration_phase(now - calib_start, COUNTDOWN, CALIBRATION_SECONDS)
                 if phase == "countdown":
                     draw_countdown(frame, str(count))
                     hints = pose_warnings([sample]) if sample else ["I can't see your face yet."]
-                    lines += [(h, (0, 200, 255)) for h in hints]
+                    lines += [(h, AMBER) for h in hints]
                 elif phase == "capture":
                     if sample:
                         calib.append(sample)
-                    lines.append(("Hold still...", (0, 200, 255)))
+                    lines.append(("Hold still...", AMBER))
                 else:
                     try:
                         settings.baseline = Baseline.from_samples(calib)
@@ -382,7 +475,7 @@ def run_preview(camera: int | None = None) -> None:
                     calib, calib_start = [], None
             if phase in ("idle", "done"):
                 if monitor is None:
-                    lines.append(("Press C to calibrate", (0, 200, 255)))
+                    lines.append(("Press C to calibrate", AMBER))
                 else:
                     alerts = monitor.update(sample, now)
                     s = monitor.status
@@ -395,8 +488,8 @@ def run_preview(camera: int | None = None) -> None:
                     lines.append((f"Blinks: {bpm}", (230, 230, 230)))
                     for alert in alerts:
                         print(alert.value)
-                lines += [(w, (0, 200, 255)) for w in warnings]
-            draw_lines(frame, lines)
+                lines += [(w, AMBER) for w in warnings]
+            draw_lines(frame, lines, 0.8 * scale)
             cv2.imshow(PREVIEW_TITLE, frame)
             key = cv2.waitKey(max(1, int(1000 / FPS))) & 0xFF
             if key in (ord("q"), ord("Q"), 27):

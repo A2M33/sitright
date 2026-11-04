@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from sitright.app import TrayUpdater, finish, notify
+from sitright.app import TrayUpdater, finish, fit_size, notify, wrap_text
 
 
 class FakeIcon:
@@ -268,3 +268,66 @@ def test_preview_explains_a_missing_model(fake_window, monkeypatch, capsys):
     monkeypatch.setattr(app, "open_detector", no_model)
     app.run_preview(camera=0)
     assert "face model" in capsys.readouterr().out
+
+
+def test_wrap_text_breaks_at_spaces():
+    def measure(text):
+        return len(text)
+
+    assert wrap_text("aa bb cc dd", 5, measure) == ["aa bb", "cc dd"]
+    assert wrap_text("aa", 5, measure) == ["aa"]
+    assert wrap_text("", 5, measure) == []
+    assert wrap_text("averyveryverylongword bb", 5, measure) == ["averyveryverylongword", "bb"]
+
+
+def test_fit_size_keeps_the_proportions():
+    assert fit_size(640, 480, (480, 360)) == (480, 360)
+    assert fit_size(640, 360, (480, 360)) == (480, 270)  # a 16:9 camera isn't stretched to 4:3
+    assert fit_size(480, 640, (480, 360)) == (270, 360)
+
+
+@pytest.mark.parametrize("scale", [1.0, 1.5, 2.0])
+def test_every_calibration_hint_fits_the_window(monkeypatch, scale):
+    cv2 = pytest.importorskip("cv2")
+    from sitright import app
+    from sitright.monitor import Sample, pose_warnings
+
+    numpy = pytest.importorskip("numpy")
+    monkeypatch.setattr(app, "display_scale", lambda: scale)
+    view = app.CvCalibrationView()
+    bad_pose = Sample(ear=0.3, nose_y=0.9, face_width=0.8, pitch=40.0, nose_x=0.9)
+    hints = pose_warnings([bad_pose])
+    assert len(hints) == 3
+    img = view.compose(numpy.zeros((480, 640, 3), numpy.uint8), ["3", "Sit up"] + hints[:1])
+    assert img.shape[1] == round(480 * scale)
+    text_scale = 0.6 * scale
+    margin = round(20 * text_scale)
+    wrapped = app.layout_lines([(h, app.AMBER) for h in hints], text_scale, img.shape[1] - 2 * margin)
+    assert len(wrapped) > len(hints)  # these used to run off the right edge
+    for text, _color in wrapped:
+        width = cv2.getTextSize(
+            text, cv2.FONT_HERSHEY_SIMPLEX, text_scale, app.text_weight(text_scale)
+        )[0][0]
+        assert width <= img.shape[1] - 2 * margin
+
+
+def test_a_wide_camera_is_not_stretched_in_the_calibration_window(monkeypatch):
+    pytest.importorskip("cv2")
+    numpy = pytest.importorskip("numpy")
+    from sitright import app
+
+    monkeypatch.setattr(app, "display_scale", lambda: 1.0)
+    img = app.CvCalibrationView().compose(numpy.zeros((360, 640, 3), numpy.uint8), ["Hold still..."])
+    assert img.shape[:2] == (270, 480)
+
+
+def test_calibration_text_goes_on_a_band_at_the_bottom(monkeypatch):
+    pytest.importorskip("cv2")
+    numpy = pytest.importorskip("numpy")
+    from sitright import app
+
+    monkeypatch.setattr(app, "display_scale", lambda: 1.0)
+    frame = numpy.full((480, 640, 3), 200, numpy.uint8)
+    img = app.CvCalibrationView().compose(frame, ["Hold still...", "Look at the screen"])
+    assert (img[10, 240] == 200).all()  # the face area stays as it was
+    assert img[-2, 2].max() < 100  # the band is dark so the text reads on any background
