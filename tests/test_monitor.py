@@ -259,3 +259,13 @@ def test_pose_warnings():
     assert "far" in pose_warnings([Sample(0.3, 0.5, 0.08)])[0]
     assert "off to the side" in pose_warnings([Sample(0.3, 0.5, 0.3, nose_x=0.9)])[0]
     assert "tipped" in pose_warnings([Sample(0.3, 0.5, 0.3, pitch=35.0)])[0]
+
+
+def test_recalibrating_applies_the_new_pose_and_drops_the_slouch_timer():
+    m = Monitor(BASE)
+    _, t = feed(m, SLOUCH, 0, 25)
+    m.recalibrate(Baseline(nose_y=0.62, face_width=0.30, open_ear=0.30))
+    alerts, _ = feed(m, SLOUCH, t, 40)
+    assert alerts == []
+    assert not m.status.slouching
+    assert m.status.sitting_minutes > 1

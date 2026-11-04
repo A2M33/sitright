@@ -405,3 +405,12 @@ def test_switching_camera_calibrates_even_without_a_saved_pose():
     h = Harness(lambda now: GOOD, baseline=None)
     h.engine.switch_camera(1)
     assert h.engine._calibrate.is_set()
+
+
+def test_recalibrating_does_not_restart_the_break_timer():
+    h = Harness(lambda now: GOOD)
+    h.run_until(600)
+    h.engine.request_calibration()
+    h.run_until(610)
+    assert h.engine.monitor.status.sitting_minutes > 10  # used to fall back to 0
+    assert h.saved[-1].baseline == Baseline.from_samples([GOOD])

@@ -398,7 +398,10 @@ class Engine(threading.Thread):
         baseline = Baseline.from_samples(samples)
         self.settings.baseline = baseline
         self._save(self.settings)
-        self.monitor = self._new_monitor(baseline)
+        if self.monitor is None:
+            self.monitor = self._new_monitor(baseline)
+        else:
+            self.monitor.recalibrate(baseline)
         warnings = pose_warnings(samples)
         if warnings:
             self.on_notify("SitRight", "Saved, but check this: " + " ".join(warnings))

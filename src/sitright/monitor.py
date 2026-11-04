@@ -286,6 +286,12 @@ class Monitor:
         self.gate.last_shown = now
         return [alert]
 
+    def recalibrate(self, baseline: Baseline) -> None:
+        """Use a new pose. The sitting timer and the blink count carry on: you never left."""
+        self.baseline = baseline
+        self._bad_since.clear()
+        self._eyes_closed = False
+
     def _forget(self) -> None:
         self._bad_since.clear()
         self._face_since = None
