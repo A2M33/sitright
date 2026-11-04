@@ -24,7 +24,7 @@ SitRight runs on your computer. It reads each frame in memory, measures it and d
 | Take a break | 50 minutes at the desk without leaving for at least 2 minutes |
 | Blink (off by default) | fewer than 8 blinks a minute. I haven't checked the blink counter on enough cameras to switch it on for everyone. Turn it on under Reminders if you want to try it. |
 
-Two reminders never arrive less than 2 minutes apart, and you see the same one at most once every 5 minutes. The tray icon turns green when your posture is fine, amber while you slouch or sit too close, and grey when you've left the desk or SitRight is paused.
+Two reminders never arrive less than 2 minutes apart, and you see the same one at most once every 5 minutes. The tray icon turns green when your posture is fine, amber with a slumped figure while you slouch or sit too close, and grey when you've left the desk or SitRight is paused.
 
 ## Install
 
@@ -70,6 +70,10 @@ Noise filters such as NVIDIA Broadcast, Krisp and Voicemeeter hold the microphon
 
 If the camera disappears or another program grabs it, the tooltip reads "camera busy / not found" and SitRight tries again every 30 seconds. A short outage doesn't count as you leaving the desk. After 2 minutes without a picture SitRight can't tell where you went, so it starts the sitting timer over when the camera comes back.
 
+### Locked screens and sleep
+
+Lock your screen and SitRight lets go of the camera until you unlock it. Time behind the lock screen counts as time away, so 2 minutes or more counts as a break. After sleep SitRight reopens the camera and starts the sitting timer over.
+
 ### Start it with your computer
 
 - Windows: tick "Start with Windows" in the tray menu.
@@ -106,7 +110,7 @@ Settings live in `%APPDATA%\sitright\config.json` on Windows and `~/.config/sitr
 
 The Sensitivity menu scales the first three on top of what you write here and leaves your numbers in the file alone. So does calibration.
 
-A typo won't stop SitRight from starting. It skips keys it doesn't know, uses the default for any value of the wrong type, and shows a notification listing what it ignored.
+A typo won't stop SitRight from starting. It skips keys it doesn't know, uses the default for a value of the wrong type or one that can't work (a negative time, a blink window of 0), and shows a notification listing what it ignored. If it can't parse the file at all, it starts on defaults and copies your file to `config.json.bad` before its next save.
 
 ## Daily stats
 
@@ -130,7 +134,7 @@ pytest
 
 - SitRight never writes an image to disk or sends one anywhere.
 - Its only network request is the one-time model download from Google's storage.
-- Pausing from the tray menu releases the camera, so its light goes off.
+- Pausing from the tray menu or locking your screen releases the camera, so its light goes off.
 
 ## License
 
