@@ -169,3 +169,40 @@ def test_an_absurdly_long_number_is_a_problem_not_a_crash(cfg_dir):
     (cfg_dir / "config.json").write_text('{"camera": ' + "1" * 5000 + "}", encoding="utf-8")
     s, problems = config.read()
     assert s == config.Settings() and problems
+
+
+def test_thresholds_that_would_crash_the_engine_fall_back(cfg_dir):
+    write(cfg_dir, {"thresholds": {
+        "blink_window_seconds": 0,  # used to divide by zero and kill the engine thread
+        "away_reset_seconds": 0,
+        "hold_seconds": -5,
+        "slouch_drop": 0.1,
+        "cooldown_seconds": 0,  # no cooldown is a legitimate choice
+    }})
+    s, problems = config.read()
+    default = config.Thresholds()
+    assert s.thresholds.blink_window_seconds == default.blink_window_seconds
+    assert s.thresholds.away_reset_seconds == default.away_reset_seconds
+    assert s.thresholds.hold_seconds == default.hold_seconds
+    assert s.thresholds.slouch_drop == 0.1
+    assert s.thresholds.cooldown_seconds == 0
+    assert len(problems) == 3 and "blink_window_seconds" in problems[0]
+
+
+def test_nan_and_infinity_are_not_numbers_we_can_use(cfg_dir):
+    cfg_dir.mkdir()
+    (cfg_dir / "config.json").write_text(
+        '{"thresholds": {"hold_seconds": NaN, "slouch_drop": Infinity, "cooldown_seconds": 1e999,'
+        ' "break_after_minutes": ' + "9" * 400 + "}}",
+        encoding="utf-8",
+    )
+    s, problems = config.read()
+    assert s.thresholds == config.Thresholds()
+    assert len(problems) == 4
+
+
+def test_a_pose_that_cant_be_real_asks_for_calibration(cfg_dir):
+    write(cfg_dir, {"baseline": {"nose_y": 0.5, "face_width": 0, "open_ear": 0.3}})
+    s, problems = config.read()
+    assert s.baseline is None
+    assert any("Calibrate again" in p for p in problems)

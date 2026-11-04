@@ -8,6 +8,7 @@ merges into the file and leaves `thresholds` as the user wrote them.
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import sys
@@ -21,6 +22,14 @@ from .monitor import SENSITIVITY, Baseline, Reminders, Thresholds
 APP = "sitright"
 
 _save_lock = threading.Lock()  # the tray and the engine thread both save
+
+# Zero here would divide by zero or reset the timers on every frame; the rest may be zero.
+MUST_BE_POSITIVE = (
+    "too_close_ratio",
+    "blink_window_seconds",
+    "break_after_minutes",
+    "away_reset_seconds",
+)
 
 
 @dataclass
@@ -78,14 +87,23 @@ def _keep_damaged_copy() -> None:
         pass
 
 
+def _finite(value: float) -> bool:
+    """JSON lets NaN, Infinity and 400-digit integers through."""
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 def _valid(value, kind: str) -> bool:
     if kind == "bool":
         return isinstance(value, bool)
     if kind == "int":
         return isinstance(value, int) and not isinstance(value, bool)
     if kind in ("float", "float | None"):
-        ok = isinstance(value, (int, float)) and not isinstance(value, bool)
-        return ok or (value is None and kind == "float | None")
+        if value is None:
+            return kind == "float | None"
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and _finite(value)
     if kind == "str":
         return isinstance(value, str)
     return False
@@ -110,6 +128,17 @@ def _section(cls, raw, name: str, problems: list[str]) -> dict:
     return out
 
 
+def _in_range(values: dict, problems: list[str]) -> dict:
+    """Threshold values with the ones that can't work taken out."""
+    out = {}
+    for key, value in values.items():
+        if value < 0 or (value == 0 and key in MUST_BE_POSITIVE):
+            problems.append(f'"thresholds.{key}" can\'t be {value:g}; using the default.')
+        else:
+            out[key] = value
+    return out
+
+
 def parse(data) -> tuple[Settings, list[str]]:
     """Settings from decoded JSON, plus human-readable problems found on the way."""
     problems: list[str] = []
@@ -124,7 +153,11 @@ def parse(data) -> tuple[Settings, list[str]]:
             s.baseline = Baseline(**values)
         except TypeError:
             problems.append("The saved pose is incomplete. Calibrate again from the tray menu.")
-    s.thresholds = Thresholds(**_section(Thresholds, data.get("thresholds"), "thresholds", problems))
+        if s.baseline and (s.baseline.face_width <= 0 or s.baseline.open_ear <= 0):
+            s.baseline = None
+            problems.append("The saved pose makes no sense. Calibrate again from the tray menu.")
+    raw_thresholds = _section(Thresholds, data.get("thresholds"), "thresholds", problems)
+    s.thresholds = Thresholds(**_in_range(raw_thresholds, problems))
     s.reminders = Reminders(**_section(Reminders, data.get("reminders"), "reminders", problems))
 
     for key, kind in (("camera", "int"), ("sensitivity", "str"), ("auto_pause", "bool")):
