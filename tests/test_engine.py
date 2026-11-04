@@ -1,5 +1,6 @@
 """Engine tests with a fake camera and a fake clock. No cv2 or mediapipe needed."""
 
+import threading
 from datetime import datetime
 
 from sitright.engine import (
@@ -301,3 +302,28 @@ def test_engine_feeds_daily_stats():
     assert 45 <= stats.upright_percent <= 55
     assert stats.reminders == {"SLOUCH": 1}
     assert h.engine.stats_summary().startswith("Today: ")
+
+
+def test_a_failing_tray_call_does_not_kill_the_engine_thread():
+    calls = []
+    alive = threading.Event()
+
+    def on_change(state, tooltip):
+        calls.append(tooltip)
+        if len(calls) == 1:
+            raise OSError("tray is gone")
+        alive.set()
+
+    engine = Engine(
+        0,
+        on_change,
+        lambda title, message: None,
+        settings=Settings(baseline=BASE),
+        open_detector=lambda camera: FakeDetector(lambda now: GOOD),
+    )
+    engine.start()
+    try:
+        assert alive.wait(5)  # the thread used to die here and the tray froze
+    finally:
+        engine.stop()
+        engine.join(5)

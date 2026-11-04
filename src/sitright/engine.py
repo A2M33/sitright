@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import threading
 import time
+import traceback
 from datetime import date, datetime, timedelta
 from typing import Callable, Protocol
 
@@ -232,7 +233,12 @@ class Engine(threading.Thread):
             self._calibrate.set()
         try:
             while not self._stop_event.is_set():
-                self._stop_event.wait(self.step())
+                try:
+                    delay = self.step()
+                except Exception:  # e.g. the tray failed: keep watching, or the app goes quiet
+                    traceback.print_exc()
+                    delay = 1.0
+                self._stop_event.wait(delay)
         finally:
             self._release()
             self.stats.flush()
