@@ -2,7 +2,7 @@ import sys
 
 import pytest
 
-from sitright.app import TrayUpdater
+from sitright.app import TrayUpdater, notify
 
 
 class FakeIcon:
@@ -71,3 +71,49 @@ def test_closing_a_window_the_user_already_closed_is_not_an_error(monkeypatch):
     view = CvCalibrationView()
     view._shown = True
     view.close()  # used to raise, which the engine then reported as a camera failure
+
+
+class StrictIcon:
+    """Fails like pystray does when a notification doesn't fit its Windows buffer."""
+
+    HAS_NOTIFICATION = True
+
+    def __init__(self) -> None:
+        self.shown: list[tuple[str, str]] = []
+
+    def notify(self, message, title):
+        if len(message) > 255 or len(title) > 63:
+            raise ValueError("string too long")
+        self.shown.append((title, message))
+
+
+def test_long_notifications_are_shortened_to_fit():
+    icon = StrictIcon()
+    notify(icon, "t" * 100, "m" * 400)
+    title, message = icon.shown[0]
+    assert len(title) == 63 and len(message) == 255
+    assert message.endswith("...")
+
+
+def test_a_failing_notification_does_not_reach_the_caller():
+    class Broken(StrictIcon):
+        def notify(self, message, title):
+            raise OSError("tray is gone")
+
+    notify(Broken(), "SitRight", "hello")
+
+
+def test_a_failed_tray_write_is_tried_again():
+    class Flaky(FakeIcon):
+        def __setattr__(self, name, value):
+            if name == "icon" and not self.__dict__.get("ready"):
+                raise OSError("no temp file")
+            super().__setattr__(name, value)
+
+    icon = Flaky()
+    tray = TrayUpdater(lambda: icon)
+    with pytest.raises(OSError):
+        tray.update("ok", "SitRight")
+    icon.ready = True
+    tray.update("ok", "SitRight")
+    assert icon.writes == ["icon", "title"]

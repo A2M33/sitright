@@ -34,6 +34,8 @@ REMINDER_LABELS = {
     "blink": "Blink (experimental)",
     "take_break": "Take a break",
 }
+MAX_NOTIFY_TITLE = 63
+MAX_NOTIFY_TEXT = 255
 
 
 def make_icon(state: str) -> Image.Image:
@@ -46,11 +48,18 @@ def make_icon(state: str) -> Image.Image:
     return img
 
 
+def shorten(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
 def notify(icon, title: str, message: str) -> None:
-    if icon.HAS_NOTIFICATION:
-        icon.notify(message, title)
-        return
+    """Show a notification. A failure here must never take the caller down."""
+    # pystray copies these into fixed Windows buffers and raises if they don't fit.
+    title, message = shorten(title, MAX_NOTIFY_TITLE), shorten(message, MAX_NOTIFY_TEXT)
     try:
+        if icon.HAS_NOTIFICATION:
+            icon.notify(message, title)
+            return
         from plyer import notification
 
         notification.notify(title=title, message=message, app_name="SitRight", timeout=8)
@@ -72,12 +81,13 @@ class TrayUpdater:
 
     def update(self, state: str, tooltip: str) -> None:
         icon = self._get_icon()
+        # Remember a value only once it's written, so a failed write is tried again.
         if state != self.state:
-            self.state = state
             icon.icon = make_icon(state)
+            self.state = state
         if tooltip != self.title:
-            self.title = tooltip
             icon.title = tooltip[:127]  # Windows cuts tray tooltips at 127 characters
+            self.title = tooltip
 
 
 def run_tray(camera: int | None = None) -> None:
