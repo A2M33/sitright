@@ -36,7 +36,7 @@ sitright = "sitright.__main__:main"
 sitright-tray = "sitright.__main__:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8.2"]
 
 [tool.setuptools.dynamic]
 version = { attr = "sitright.__version__" }

@@ -5,8 +5,8 @@ from email.message import Message
 
 import pytest
 
-pytest.importorskip("cv2")
-pytest.importorskip("mediapipe")
+pytest.importorskip("cv2", exc_type=ImportError)
+pytest.importorskip("mediapipe", exc_type=ImportError)
 
 from sitright import detector  # noqa: E402
 from sitright.engine import ModelError  # noqa: E402

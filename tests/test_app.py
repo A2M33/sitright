@@ -62,7 +62,7 @@ def test_tray_menu_builds_and_its_items_work(tmp_path, monkeypatch):
     assert '"sensitivity": "strict"' in saved
 
 def test_closing_a_window_the_user_already_closed_is_not_an_error(monkeypatch):
-    cv2 = pytest.importorskip("cv2")
+    cv2 = pytest.importorskip("cv2", exc_type=ImportError)
     from sitright.app import CvCalibrationView
 
     def gone(_title):
@@ -204,7 +204,7 @@ class PreviewDetector:
 @pytest.fixture
 def fake_window(tmp_path, monkeypatch):
     """cv2's window calls with no window: `shown` counts frames, `open_for` ends the run."""
-    cv2 = pytest.importorskip("cv2")
+    cv2 = pytest.importorskip("cv2", exc_type=ImportError)
     from sitright import app
 
     monkeypatch.setenv("APPDATA", str(tmp_path))
@@ -288,7 +288,7 @@ def test_fit_size_keeps_the_proportions():
 
 @pytest.mark.parametrize("scale", [1.0, 1.5, 2.0])
 def test_every_calibration_hint_fits_the_window(monkeypatch, scale):
-    cv2 = pytest.importorskip("cv2")
+    cv2 = pytest.importorskip("cv2", exc_type=ImportError)
     from sitright import app
     from sitright.monitor import Sample, pose_warnings
 
@@ -312,7 +312,7 @@ def test_every_calibration_hint_fits_the_window(monkeypatch, scale):
 
 
 def test_a_wide_camera_is_not_stretched_in_the_calibration_window(monkeypatch):
-    pytest.importorskip("cv2")
+    pytest.importorskip("cv2", exc_type=ImportError)
     numpy = pytest.importorskip("numpy")
     from sitright import app
 
@@ -322,7 +322,7 @@ def test_a_wide_camera_is_not_stretched_in_the_calibration_window(monkeypatch):
 
 
 def test_calibration_text_goes_on_a_band_at_the_bottom(monkeypatch):
-    pytest.importorskip("cv2")
+    pytest.importorskip("cv2", exc_type=ImportError)
     numpy = pytest.importorskip("numpy")
     from sitright import app
 

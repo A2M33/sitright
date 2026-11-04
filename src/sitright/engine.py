@@ -135,7 +135,7 @@ class Engine(threading.Thread):
         self._open_detector = open_detector
         self._clock = clock
         self._wall = wall_clock
-        self._paused_until: float | None = None  # wall-clock time; inf = until resumed
+        self._paused_until: float | None = None  # wall-clock time
         self._was_paused = False
         self._check_in_use = check_in_use
         self._busy: list[str] = []
@@ -233,8 +233,6 @@ class Engine(threading.Thread):
     def pause_text(self) -> str:
         if not self.paused:
             return ""
-        if self._paused_until == float("inf"):
-            return "paused"
         now = datetime.fromtimestamp(self._wall())
         return "paused " + describe_until(datetime.fromtimestamp(self._paused_until), now)
 
