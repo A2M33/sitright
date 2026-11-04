@@ -267,6 +267,11 @@ class Engine(threading.Thread):
             apps = " and ".join(busy[:2])
             self.on_change("idle", f"SitRight: paused, camera or mic in use by {apps}")
             return 1.0
+        if self.monitor is None and not self._calibrate.is_set():
+            # Nothing to compare frames with, so don't keep the camera light on.
+            self._release()
+            self.on_change("idle", "SitRight: not calibrated (right-click > Calibrate)")
+            return 0.5
         if self.detector is None and not self._open_camera(now):
             return 0.5
         try:
@@ -274,9 +279,6 @@ class Engine(threading.Thread):
                 self._calibrate.clear()
                 self._run_calibration()
                 return 0.0
-            if self.monitor is None:
-                self.on_change("idle", "SitRight: not calibrated (right-click > Calibrate)")
-                return 0.5
             sample = self.detector.read(now)
         except CameraError as exc:
             return self._read_failed(now, exc)

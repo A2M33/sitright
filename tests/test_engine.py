@@ -327,3 +327,18 @@ def test_a_failing_tray_call_does_not_kill_the_engine_thread():
     finally:
         engine.stop()
         engine.join(5)
+
+
+def test_camera_is_let_go_while_there_is_no_calibration():
+    # First start, and the user cancelled the calibration window.
+    view = FakeView(cancel_after=3)
+    h = Harness(lambda now: GOOD, baseline=None, view=view)
+    h.engine.request_calibration()
+    h.run_until(10)
+    assert h.engine.monitor is None
+    assert h.engine.detector is None  # the light used to stay on with nothing being measured
+    assert "not calibrated" in h.tooltips[-1]
+    view.cancel_after = None
+    h.engine.request_calibration()
+    h.run_until(20)
+    assert h.engine.monitor is not None
