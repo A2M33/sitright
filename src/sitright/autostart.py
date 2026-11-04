@@ -41,7 +41,10 @@ class RunKey:
     """The real HKCU Run key."""
 
     def get(self, name: str) -> str | None:
-        import winreg
+        try:
+            import winreg
+        except ImportError:  # the tray asks on Linux too, while building its menu
+            return None
 
         try:
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:

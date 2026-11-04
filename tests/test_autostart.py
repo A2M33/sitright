@@ -1,3 +1,5 @@
+import sys
+
 from sitright import autostart
 
 
@@ -30,3 +32,8 @@ def test_toggle():
     autostart.set_enabled(store, False)
     assert not autostart.is_enabled(store)
     autostart.set_enabled(store, False)  # turning off twice is fine
+
+
+def test_run_key_reads_as_off_where_there_is_no_registry(monkeypatch):
+    monkeypatch.setitem(sys.modules, "winreg", None)  # makes `import winreg` fail, as on Linux
+    assert autostart.is_enabled(autostart.RunKey()) is False  # used to crash the tray menu on Linux
