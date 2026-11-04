@@ -1,8 +1,10 @@
 import sys
+import threading
+import time
 
 import pytest
 
-from sitright.app import TrayUpdater, notify
+from sitright.app import TrayUpdater, finish, notify
 
 
 class FakeIcon:
@@ -117,3 +119,62 @@ def test_a_failed_tray_write_is_tried_again():
     icon.ready = True
     tray.update("ok", "SitRight")
     assert icon.writes == ["icon", "title"]
+
+
+def test_finish_waits_for_the_camera_and_the_stats():
+    from sitright.config import Settings
+    from sitright.engine import Engine
+    from sitright.monitor import Baseline, Sample
+    from sitright.stats import StatsTracker
+
+    class SlowDetector:
+        closed = False
+
+        def read(self, now):
+            return Sample(ear=0.3, nose_y=0.5, face_width=0.3)
+
+        def close(self):
+            time.sleep(0.2)
+            self.closed = True
+
+    detector = SlowDetector()
+    saved = []
+    opened = threading.Event()
+
+    def open_detector(_camera):
+        opened.set()
+        return detector
+
+    engine = Engine(
+        0,
+        lambda state, tooltip: None,
+        lambda title, message: None,
+        settings=Settings(baseline=Baseline(0.5, 0.3, 0.3)),
+        open_detector=open_detector,
+        stats=StatsTracker(120, save=saved.append),
+    )
+    engine.start()
+    assert opened.wait(5)
+    time.sleep(0.1)
+    saved.clear()
+    finish(engine)
+    assert detector.closed and saved
+
+
+def test_finish_copes_with_an_engine_that_never_started():
+    from sitright.engine import Engine
+
+    finish(Engine(0, lambda s, t: None, lambda t, m: None))
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="pystray needs a desktop session")
+def test_quitting_the_tray_waits_for_the_engine(tmp_path, monkeypatch):
+    pystray = pytest.importorskip("pystray")
+    from sitright import app
+
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.setattr(pystray.Icon, "run", lambda icon, setup=None: None)
+    finished = []
+    monkeypatch.setattr(app, "finish", finished.append)
+    app.run_tray(camera=0)
+    assert len(finished) == 1

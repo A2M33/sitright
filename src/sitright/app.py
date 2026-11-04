@@ -67,6 +67,16 @@ def notify(icon, title: str, message: str) -> None:
         print(f"{title}: {message}")
 
 
+def finish(engine: Engine, timeout: float = 3.0) -> None:
+    """Give the engine thread time to close the camera and save today's numbers.
+
+    It's a daemon thread, so Python would otherwise cut it off at exit.
+    """
+    engine.stop()
+    if engine.is_alive():
+        engine.join(timeout)
+
+
 class TrayUpdater:
     """Pushes state to the tray icon only when it changed.
 
@@ -241,7 +251,10 @@ def run_tray(camera: int | None = None) -> None:
         engine.start()
         scan_cameras()
 
-    icon.run(setup)
+    try:
+        icon.run(setup)
+    finally:
+        finish(engine)
 
 
 def draw_lines(frame, lines: list[tuple[str, tuple[int, int, int]]], scale: float = 0.8) -> None:
