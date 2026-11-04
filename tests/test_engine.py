@@ -414,3 +414,18 @@ def test_recalibrating_does_not_restart_the_break_timer():
     h.run_until(610)
     assert h.engine.monitor.status.sitting_minutes > 10  # used to fall back to 0
     assert h.saved[-1].baseline == Baseline.from_samples([GOOD])
+
+
+def test_a_failed_save_is_reported_and_is_not_a_camera_failure():
+    h = Harness(lambda now: GOOD, baseline=None)
+
+    def no_disk(_settings):
+        raise OSError("disk full")
+
+    h.engine._save = no_disk
+    h.engine.request_calibration()
+    h.run_until(10)
+    assert h.engine.monitor is not None  # the pose still works for this run
+    assert h.engine.detector is not None
+    assert any("Couldn't save your settings" in note for note in h.notes)
+    assert h.tooltips[-1].startswith("SitRight: sitting")

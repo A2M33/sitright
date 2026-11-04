@@ -153,24 +153,30 @@ class Engine(threading.Thread):
     def _thresholds(self):
         return self.settings.thresholds.scaled(self.settings.sensitivity)
 
+    def _persist(self) -> None:
+        try:
+            self._save(self.settings)
+        except OSError as exc:  # the setting still applies until the next start
+            self.on_notify("SitRight", f"Couldn't save your settings: {exc}")
+
     # Tray settings: each one applies on the next frame and is saved right away.
 
     def set_sensitivity(self, name: str) -> None:
         self.settings.sensitivity = name
         if self.monitor is not None:
             self.monitor.thresholds = self._thresholds()
-        self._save(self.settings)
+        self._persist()
         self.on_menu()
 
     def set_reminder(self, key: str, on: bool) -> None:
         setattr(self.settings.reminders, key, on)
-        self._save(self.settings)
+        self._persist()
         self.on_menu()
 
     def set_auto_pause(self, on: bool) -> None:
         self.settings.auto_pause = on
         self._next_in_use_check = 0.0
-        self._save(self.settings)
+        self._persist()
         self.on_menu()
 
     @property
@@ -207,7 +213,7 @@ class Engine(threading.Thread):
         if index == self.camera:
             return
         self.camera = self.settings.camera = index
-        self._save(self.settings)
+        self._persist()
         self._camera_changed = True  # the engine thread releases the old camera
         self._retry_at = None
         # A calibrated pose belongs to the old camera's angle and distance.
@@ -397,7 +403,7 @@ class Engine(threading.Thread):
             return
         baseline = Baseline.from_samples(samples)
         self.settings.baseline = baseline
-        self._save(self.settings)
+        self._persist()
         if self.monitor is None:
             self.monitor = self._new_monitor(baseline)
         else:
