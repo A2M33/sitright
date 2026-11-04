@@ -5,7 +5,9 @@ The model runs locally. Frames are never saved or sent anywhere.
 
 from __future__ import annotations
 
+import http.client
 import math
+import shutil
 import urllib.request
 from pathlib import Path
 
@@ -15,7 +17,7 @@ from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python.vision import FaceLandmarker, FaceLandmarkerOptions, RunningMode
 
 from .config import cache_dir
-from .engine import CameraError
+from .engine import CameraError, ModelError
 from .monitor import Sample, eye_aspect_ratio, head_pitch
 
 MODEL_URL = (
@@ -29,16 +31,33 @@ RIGHT_EYE = (362, 385, 387, 263, 373, 380)
 NOSE_TIP = 1
 LEFT_CHEEK, RIGHT_CHEEK = 234, 454
 CAPTURE_SIZE = (640, 480)
+DOWNLOAD_TIMEOUT = 30  # seconds of silence from the server before we give up
 
 
 def model_path() -> Path:
     path = cache_dir() / "face_landmarker.task"
     if not path.exists():
         print("Downloading face model (one time, ~4 MB)...")
-        tmp = path.with_suffix(".part")
-        urllib.request.urlretrieve(MODEL_URL, tmp)
-        tmp.replace(path)
+        download_model(path)
     return path
+
+
+def download_model(path: Path) -> None:
+    """Fetch the model into `path`, or raise ModelError and leave nothing behind."""
+    tmp = path.with_suffix(".part")
+    try:
+        with urllib.request.urlopen(MODEL_URL, timeout=DOWNLOAD_TIMEOUT) as response:
+            expected = response.headers.get("Content-Length")
+            with tmp.open("wb") as out:
+                shutil.copyfileobj(response, out)
+        if expected is not None and tmp.stat().st_size != int(expected):
+            raise OSError("the download was cut short")
+        tmp.replace(path)
+    except (OSError, http.client.HTTPException) as exc:
+        tmp.unlink(missing_ok=True)
+        raise ModelError(
+            "Couldn't download the face model. Check your internet connection."
+        ) from exc
 
 
 def camera_works(index: int) -> bool:
@@ -53,6 +72,7 @@ def camera_works(index: int) -> bool:
 class Detector:
     def __init__(self, camera: int = 0) -> None:
         self.camera = camera
+        model = model_path()  # first, so a slow download doesn't run with the camera light on
         self._cap = cv2.VideoCapture(camera)
         if not self._cap.isOpened():
             self._cap.release()
@@ -62,7 +82,7 @@ class Detector:
         self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAPTURE_SIZE[0])
         self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAPTURE_SIZE[1])
         options = FaceLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path=str(model_path())),
+            base_options=BaseOptions(model_asset_path=str(model)),
             running_mode=RunningMode.VIDEO,
             num_faces=1,
             output_facial_transformation_matrixes=True,  # head pose, for head_pitch()

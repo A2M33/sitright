@@ -43,6 +43,10 @@ class CameraError(RuntimeError):
     """The camera could not be opened or stopped delivering frames."""
 
 
+class ModelError(RuntimeError):
+    """The face model isn't on disk and couldn't be downloaded."""
+
+
 class CalibrationView(Protocol):
     def show(self, frame, lines: list[str]) -> bool:
         """Draw the frame with `lines` on top. False = the user closed the window."""
