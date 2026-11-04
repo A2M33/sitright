@@ -32,6 +32,8 @@ from .monitor import (
 )
 
 COLORS = {"ok": "#3fb950", "warn": "#d29922", "idle": "#6e7681"}
+ICON_SIZE = 64
+ICON_SUPERSAMPLE = 4
 REMINDER_LABELS = {
     "slouch": "Sit up straight",
     "too_close": "Lean back",
@@ -48,13 +50,23 @@ MAX_NOTIFY_TEXT = 255
 
 
 def make_icon(state: str) -> Image.Image:
-    img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    d.ellipse((4, 4, 60, 60), fill=COLORS[state])
-    # A tiny seated figure: head and a straight back.
-    d.ellipse((25, 12, 39, 26), fill="white")
-    d.rounded_rectangle((27, 28, 37, 50), radius=4, fill="white")
-    return img
+    """The tray icon. Drawn large and scaled down, since PIL shapes have jagged edges."""
+    size = ICON_SIZE * ICON_SUPERSAMPLE
+
+    def px(*values: float) -> tuple[int, ...]:
+        return tuple(round(v * ICON_SUPERSAMPLE) for v in values)
+
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    ImageDraw.Draw(img).ellipse(px(2, 2, 62, 62), fill=COLORS[state])
+    # A seated figure, thick enough to survive the 16-pixel tray size.
+    figure = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    d = ImageDraw.Draw(figure)
+    d.ellipse(px(23, 8, 41, 26), fill="white")
+    d.rounded_rectangle(px(25, 29, 39, 55), radius=px(6)[0], fill="white")
+    if state == "warn":  # slumped, so the state doesn't rest on telling amber from green
+        figure = figure.rotate(-24, resample=Image.BICUBIC, center=px(30, 54))
+    img.alpha_composite(figure)
+    return img.resize((ICON_SIZE, ICON_SIZE), Image.LANCZOS)
 
 
 def shorten(text: str, limit: int) -> str:

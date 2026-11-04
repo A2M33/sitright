@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from sitright.app import TrayUpdater, finish, fit_size, notify, wrap_text
+from sitright.app import TrayUpdater, finish, fit_size, make_icon, notify, wrap_text
 
 
 class FakeIcon:
@@ -331,3 +331,21 @@ def test_calibration_text_goes_on_a_band_at_the_bottom(monkeypatch):
     img = app.CvCalibrationView().compose(frame, ["Hold still...", "Look at the screen"])
     assert (img[10, 240] == 200).all()  # the face area stays as it was
     assert img[-2, 2].max() < 100  # the band is dark so the text reads on any background
+
+
+def white_pixels(image):
+    pixels = ((x, y) for x in range(64) for y in range(64))
+    return {xy for xy in pixels if min(image.getpixel(xy)) > 200}
+
+
+def test_tray_icon_states_differ_by_shape_not_only_by_colour():
+    icons = {state: make_icon(state) for state in ("ok", "warn", "idle")}
+    assert all(icon.size == (64, 64) for icon in icons.values())
+    ok, warn, idle = (white_pixels(icons[state]) for state in ("ok", "warn", "idle"))
+    assert len(ok ^ idle) < 30  # the same figure, give or take the blended edge
+    assert len(ok ^ warn) > 200
+
+
+def test_tray_icon_edges_are_smooth():
+    alpha = {make_icon("ok").getpixel((x, 32))[3] for x in range(64)}
+    assert len(alpha) > 2  # anti-aliased, not only fully on and fully off
