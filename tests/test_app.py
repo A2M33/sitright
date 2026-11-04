@@ -178,3 +178,93 @@ def test_quitting_the_tray_waits_for_the_engine(tmp_path, monkeypatch):
     monkeypatch.setattr(app, "finish", finished.append)
     app.run_tray(camera=0)
     assert len(finished) == 1
+
+
+class PreviewDetector:
+    """Plays `script` frame by frame: None for "no face", or an exception to raise."""
+
+    def __init__(self, script) -> None:
+        self.script = list(script)
+        self.closed = False
+        self.last_frame = None
+
+    def read(self, now):
+        import numpy
+
+        step = self.script.pop(0)
+        if isinstance(step, Exception):
+            raise step
+        self.last_frame = numpy.zeros((48, 64, 3), numpy.uint8)
+        return step
+
+    def close(self):
+        self.closed = True
+
+
+@pytest.fixture
+def fake_window(tmp_path, monkeypatch):
+    """cv2's window calls with no window: `shown` counts frames, `open_for` ends the run."""
+    cv2 = pytest.importorskip("cv2")
+    from sitright import app
+
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    state = {"shown": 0, "open_for": 1000, "keys": []}
+
+    def imshow(_title, _frame):
+        state["shown"] += 1
+
+    def visible(_title, _prop):
+        return 1 if state["shown"] < state["open_for"] else 0
+
+    monkeypatch.setattr(cv2, "imshow", imshow)
+    monkeypatch.setattr(cv2, "waitKey", lambda _ms: state["keys"].pop(0) if state["keys"] else -1)
+    monkeypatch.setattr(cv2, "getWindowProperty", visible)
+    monkeypatch.setattr(cv2, "destroyAllWindows", lambda: None)
+    monkeypatch.setattr(app.time, "sleep", lambda _s: None)
+    return state
+
+
+def test_preview_ends_when_its_window_is_closed(fake_window, monkeypatch):
+    from sitright import app
+
+    detector = PreviewDetector([None] * 50)
+    monkeypatch.setattr(app, "open_detector", lambda camera: detector)
+    fake_window["open_for"] = 3
+    app.run_preview(camera=0)  # used to reopen the window for ever
+    assert fake_window["shown"] == 3
+    assert detector.closed
+
+
+def test_preview_survives_a_dropped_frame(fake_window, monkeypatch):
+    from sitright import app
+    from sitright.engine import CameraError
+
+    detector = PreviewDetector([None, CameraError("glitch"), None])
+    monkeypatch.setattr(app, "open_detector", lambda camera: detector)
+    fake_window["keys"] = [-1, ord("Q")]  # capital Q works with Caps Lock on
+    app.run_preview(camera=0)
+    assert fake_window["shown"] == 2
+
+
+def test_preview_stops_on_a_dead_camera(fake_window, monkeypatch, capsys):
+    from sitright import app
+    from sitright.engine import MAX_READ_FAILURES, CameraError
+
+    detector = PreviewDetector([CameraError("gone")] * MAX_READ_FAILURES)
+    monkeypatch.setattr(app, "open_detector", lambda camera: detector)
+    app.run_preview(camera=0)
+    assert "gone" in capsys.readouterr().out
+    assert detector.closed
+
+
+def test_preview_explains_a_missing_model(fake_window, monkeypatch, capsys):
+    from sitright import app
+    from sitright.engine import ModelError
+
+    def no_model(_camera):
+        raise ModelError("Couldn't download the face model.")
+
+    monkeypatch.setattr(app, "open_detector", no_model)
+    app.run_preview(camera=0)
+    assert "face model" in capsys.readouterr().out

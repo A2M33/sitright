@@ -13,8 +13,10 @@ from .engine import (
     CALIBRATION_SECONDS,
     COUNTDOWN,
     FPS,
+    MAX_READ_FAILURES,
     CameraError,
     Engine,
+    ModelError,
     find_cameras,
     open_detector,
 )
@@ -34,6 +36,7 @@ REMINDER_LABELS = {
     "blink": "Blink (experimental)",
     "take_break": "Take a break",
 }
+PREVIEW_TITLE = "SitRight preview (C = calibrate, Q = quit)"
 MAX_NOTIFY_TITLE = 63
 MAX_NOTIFY_TEXT = 255
 
@@ -329,7 +332,7 @@ def run_preview(camera: int | None = None) -> None:
         print("config.json:", problem)
     try:
         detector = open_detector(settings.camera if camera is None else camera)
-    except CameraError as exc:
+    except (CameraError, ModelError) as exc:
         print(exc)
         return
 
@@ -341,14 +344,20 @@ def run_preview(camera: int | None = None) -> None:
     calib: list[Sample] = []
     calib_start: float | None = None
     warnings: list[str] = []
+    failures = 0
     try:
         while True:
             now = time.monotonic()
             try:
                 sample = detector.read(now)
             except CameraError as exc:
-                print(exc)
-                break
+                failures += 1  # one dropped frame shouldn't end the preview
+                if failures >= MAX_READ_FAILURES:
+                    print(exc)
+                    break
+                time.sleep(1 / FPS)
+                continue
+            failures = 0
             frame = cv2.flip(detector.last_frame, 1)
             lines: list[tuple[str, tuple[int, int, int]]] = []
             phase = "idle"
@@ -388,11 +397,13 @@ def run_preview(camera: int | None = None) -> None:
                         print(alert.value)
                 lines += [(w, (0, 200, 255)) for w in warnings]
             draw_lines(frame, lines)
-            cv2.imshow("SitRight preview (C = calibrate, Q = quit)", frame)
+            cv2.imshow(PREVIEW_TITLE, frame)
             key = cv2.waitKey(max(1, int(1000 / FPS))) & 0xFF
-            if key in (ord("q"), 27):
+            if key in (ord("q"), ord("Q"), 27):
                 break
-            if key == ord("c"):
+            if cv2.getWindowProperty(PREVIEW_TITLE, cv2.WND_PROP_VISIBLE) < 1:
+                break  # its X button; the next imshow would bring the window straight back
+            if key in (ord("c"), ord("C")):
                 calib, calib_start, warnings = [], time.monotonic(), []
     finally:
         detector.close()
