@@ -118,7 +118,7 @@ SitRight keeps one small file per day in the `stats` folder next to `config.json
 
 ## How it works
 
-[MediaPipe Face Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker) finds 478 points on your face in each frame, 20 times a second, at 640x480.
+[MediaPipe Face Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker) finds 478 points on your face in each frame, 20 times a second, at 640x480. While the desk is empty it looks 5 times a second, because searching an empty picture for a face costs the most CPU.
 
 - **Posture.** SitRight compares the height of your nose tip and the width of your face with your calibrated values. A webcam can't see your back. Your head drops when you slouch, though, and a camera measures that well. MediaPipe also reports the angle of your head. If you tip it down to read notes, your nose drops as well, so SitRight ignores the drop while your head angle sits more than 15 degrees off your calibrated one. Poses calibrated before version 0.2.0 have no angle; calibrate again to get this.
 - **Blinks.** It uses the eye aspect ratio, eye height divided by eye width, which drops to near zero when you close your eyes. The cut-off sits at 70% of your own open-eye value, so glasses and eye shape don't throw it off. A blink lasts 100 to 150 ms, and at 20 frames a second SitRight sees at least two frames of each one.

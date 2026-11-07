@@ -461,6 +461,25 @@ def test_a_failing_lock_check_is_ignored():
     assert h.engine.detector is not None
 
 
+def test_an_empty_desk_is_checked_less_often():
+    reads = []
+
+    def script(now):
+        reads.append(now)
+        return None if 60 <= now < 120 else GOOD
+
+    h = Harness(script)
+    h.run_until(60)
+    at_desk = len(reads)
+    h.run_until(120)
+    away = len(reads) - at_desk
+    assert at_desk >= 60 * 19  # 20 FPS while someone is there, for the blinks
+    assert away <= 60 * 5 + 40  # 5 FPS once the face has been gone past the grace time
+    h.run_until(121)
+    assert h.engine.monitor.status.face  # back at the desk within a fraction of a second
+    assert h.engine.stats.today.breaks == 0
+
+
 def test_waking_from_sleep_reopens_the_camera_and_counts_as_a_break():
     h = Harness(lambda now: GOOD)
     h.run_until(300)

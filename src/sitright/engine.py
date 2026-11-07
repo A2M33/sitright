@@ -30,6 +30,10 @@ MIN_CALIBRATION_SAMPLES = 5  # fewer frames with a face than this is too little 
 # A blink lasts 100-150 ms. At 12 FPS a quick one could fall between two frames;
 # 20 FPS gives at least two frames per blink and still leaves the CPU mostly idle.
 FPS = 20
+# With nobody in view there are no blinks to catch, and looking for a face in an
+# empty picture is the most expensive thing the model does. 5 FPS still notices
+# you sitting down within a fifth of a second.
+AWAY_FPS = 5
 RETRY_SECONDS = 30.0  # how often to try the camera again after it failed
 MAX_READ_FAILURES = 10  # consecutive bad frames before we give the camera up
 IN_USE_POLL_SECONDS = 5.0  # how often to check whether a call app grabbed the camera/mic
@@ -319,7 +323,8 @@ class Engine(threading.Thread):
             self._summary = summary
             self.on_menu()
         self._report(status)
-        return max(0.0, 1 / FPS - (self._clock() - now))
+        fps = FPS if status.face else AWAY_FPS
+        return max(0.0, 1 / fps - (self._clock() - now))
 
     def _notice_sleep(self) -> None:
         """A long jump in wall-clock time means the PC slept. Monotonic clocks may not show it."""
