@@ -151,6 +151,17 @@ def test_saving_over_a_damaged_file_keeps_a_copy(cfg_dir):
     assert config.read() == (config.Settings(camera=1), [])
 
 
+def test_a_file_saved_with_a_byte_order_mark_is_read(cfg_dir):
+    cfg_dir.mkdir()
+    edited = '{"thresholds": {"hold_seconds": 45}}'
+    (cfg_dir / "config.json").write_text(edited, encoding="utf-8-sig")  # Notepad, PowerShell
+    settings, problems = config.read()
+    assert problems == [] and settings.thresholds.hold_seconds == 45
+    config.save(settings)  # used to treat the file as damaged and drop the edit
+    assert config.load().thresholds.hold_seconds == 45
+    assert not (cfg_dir / "config.json.bad").exists()
+
+
 def test_a_save_that_cant_read_the_file_leaves_it_alone(cfg_dir, monkeypatch):
     config.save(config.Settings(camera=1))
 

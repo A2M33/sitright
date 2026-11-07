@@ -180,7 +180,9 @@ def parse(data) -> tuple[Settings, list[str]]:
 
 
 def _read_raw():
-    return json.loads(_file().read_text(encoding="utf-8"))
+    # utf-8-sig: Notepad and PowerShell's Set-Content -Encoding utf8 start the file
+    # with a byte order mark, which plain utf-8 decoding hands to json as garbage.
+    return json.loads(_file().read_text(encoding="utf-8-sig"))
 
 
 def read() -> tuple[Settings, list[str]]:
