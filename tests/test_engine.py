@@ -5,9 +5,11 @@ from datetime import datetime
 
 from sitright.engine import (
     CAMERA_DOWN,
+    MODEL_MISSING,
     RETRY_SECONDS,
     CameraError,
     Engine,
+    ModelError,
     describe_until,
     find_cameras,
     tomorrow_morning,
@@ -133,6 +135,20 @@ def test_camera_open_is_retried_every_30_seconds():
     assert h.opens[1] - h.opens[0] >= RETRY_SECONDS
     assert h.tooltips[-1] == CAMERA_DOWN
     assert len(h.notes) == 1  # one notification per outage, not one per retry
+
+
+def test_tooltip_says_when_the_face_model_is_missing():
+    h = Harness(lambda now: GOOD)
+    attempts = []
+
+    def no_model(camera):
+        attempts.append(h.clock.t)
+        raise ModelError("Couldn't download the face model. Check your internet connection.")
+
+    h.engine._open_detector = no_model
+    h.run_until(40)
+    assert h.tooltips[-1] == MODEL_MISSING  # was a bare "SitRight: error"
+    assert len(attempts) == 2 and len(h.notes) == 1
 
 
 def test_engine_recovers_when_camera_comes_back():

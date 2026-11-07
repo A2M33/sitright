@@ -42,6 +42,7 @@ LOCK_POLL_SECONDS = 2.0  # how often to check whether the screen is locked
 WARN_AFTER_SECONDS = 3.0  # bad posture turns the icon amber once it lasts this long
 
 CAMERA_DOWN = "SitRight: camera busy / not found"
+MODEL_MISSING = "SitRight: can't download the face model, retrying"
 DAY_STARTS_AT = 6  # "pause until tomorrow" ends at this hour
 SNOOZE_SECONDS = 15 * 60
 
@@ -158,7 +159,7 @@ class Engine(threading.Thread):
         self._calibrate = threading.Event()
         self._retry_at: float | None = None
         self._read_failures = 0
-        self._camera_down = False  # last failure was the camera (vs. some other error)
+        self._failure_tip = CAMERA_DOWN  # tooltip until the next retry, set on each failure
         self._failing = False  # no good frame since the last failure
 
     def _new_monitor(self, baseline: Baseline | None) -> Monitor | None:
@@ -313,7 +314,7 @@ class Engine(threading.Thread):
             self._camera_failed(now, exc)
             return 0.5
         self._read_failures = 0
-        self._failing = self._camera_down = False
+        self._failing = False
         today = date.fromtimestamp(self._wall())
         for alert in self.monitor.update(sample, now):
             self.on_notify("SitRight", alert.value)
@@ -367,7 +368,7 @@ class Engine(threading.Thread):
 
     def _open_camera(self, now: float) -> bool:
         if self._retry_at is not None and now < self._retry_at:
-            self.on_change("idle", CAMERA_DOWN if self._camera_down else "SitRight: error")
+            self.on_change("idle", self._failure_tip)
             return False
         try:
             self.detector = self._open_detector(self.camera)
@@ -390,8 +391,13 @@ class Engine(threading.Thread):
         self._release()
         self._read_failures = 0
         self._retry_at = now + RETRY_SECONDS
-        self._camera_down = isinstance(exc, CameraError)
-        self.on_change("idle", CAMERA_DOWN if self._camera_down else "SitRight: error")
+        if isinstance(exc, CameraError):
+            self._failure_tip = CAMERA_DOWN
+        elif isinstance(exc, ModelError):  # the notification is easy to miss on first start
+            self._failure_tip = MODEL_MISSING
+        else:
+            self._failure_tip = "SitRight: error"
+        self.on_change("idle", self._failure_tip)
         if not self._failing:  # tell the user once per outage, not every 30 seconds
             self._failing = True
             self.on_notify("SitRight", f"{exc} Trying again every {RETRY_SECONDS:.0f} seconds.")
