@@ -65,6 +65,30 @@ def test_damaged_file_is_tolerated():
     assert s.seen_seconds == 0 and s.breaks == 3 and s.reminders == {}
 
 
+def test_nan_and_negative_numbers_in_a_day_file_are_dropped(tmp_path, monkeypatch):
+    from sitright import stats
+
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    (stats.stats_dir() / "2026-03-02.json").write_text(
+        '{"seen_seconds": NaN, "upright_seconds": Infinity, "breaks": -2,'
+        ' "reminders": {"SLOUCH": 1e999, "TOO_CLOSE": 2}}',
+        encoding="utf-8",
+    )
+    s = stats.load_day("2026-03-02")
+    assert (s.seen_seconds, s.upright_seconds, s.breaks) == (0, 0, 0)
+    assert s.reminders == {"TOO_CLOSE": 2}
+    tr = StatsTracker(120, load=stats.load_day, save=stats.save_day)
+    run(tr, True, True, 0, 61)
+    assert tr.summary() == "Today: 100% upright, 0 breaks"  # used to raise on every frame
+    tr.flush()
+
+
+def test_more_upright_than_seen_is_capped():
+    s = DayStats.from_dict({"seen_seconds": 100, "upright_seconds": 400}, "2026-03-02")
+    assert s.upright_percent == 100
+
+
 def test_not_enough_data():
     assert DayStats("2026-03-02", seen_seconds=30, upright_seconds=30).summary() == (
         "Today: not enough data yet"

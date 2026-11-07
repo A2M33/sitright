@@ -7,6 +7,7 @@ itself is plain Python; reading and writing the files is passed in.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import asdict, dataclass, field
 from datetime import date
 from pathlib import Path
@@ -41,15 +42,31 @@ class DayStats:
         """Lenient: a damaged file just starts the day fresh for the bad fields."""
         s = cls(day)
         for key in ("seen_seconds", "upright_seconds"):
-            if isinstance(data.get(key), (int, float)) and not isinstance(data.get(key), bool):
+            if _count(data.get(key)):
                 setattr(s, key, float(data[key]))
-        if isinstance(data.get("breaks"), int) and not isinstance(data.get("breaks"), bool):
+        # More upright time than time seen can't happen and would show over 100%.
+        s.upright_seconds = min(s.upright_seconds, s.seen_seconds)
+        if _count(data.get("breaks")) and isinstance(data["breaks"], int):
             s.breaks = data["breaks"]
         if isinstance(data.get("reminders"), dict):
             s.reminders = {
-                k: v for k, v in data["reminders"].items() if isinstance(v, int) and v >= 0
+                k: v for k, v in data["reminders"].items() if _count(v) and isinstance(v, int)
             }
         return s
+
+
+def _count(value) -> bool:
+    """Usable as a time or a tally: a finite number, not negative.
+
+    JSON lets NaN and Infinity through, and NaN seconds used to crash the
+    percentage on every frame for the rest of the day.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value) and value >= 0
+    except OverflowError:  # a 400-digit integer
+        return False
 
 
 class StatsTracker:
