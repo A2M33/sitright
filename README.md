@@ -24,7 +24,7 @@ SitRight runs on your computer. It reads each frame in memory, measures it and d
 | Take a break | 50 minutes at the desk without leaving for at least 2 minutes |
 | Blink (off by default) | fewer than 8 blinks a minute. I haven't checked the blink counter on enough cameras to switch it on for everyone. Turn it on under Reminders if you want to try it. |
 
-Two reminders never arrive less than 2 minutes apart, and you see the same one at most once every 5 minutes. The tray icon turns green when your posture is fine, amber with a slumped figure while you slouch or sit too close, and grey when you've left the desk or SitRight is paused.
+Two reminders never arrive less than 2 minutes apart, and you see the same one at most once every 5 minutes. The tray icon turns green when your posture is fine, amber with a slumped figure once you've slouched or sat too close for 3 seconds, and grey when you've left the desk or SitRight is paused.
 
 ## Install
 

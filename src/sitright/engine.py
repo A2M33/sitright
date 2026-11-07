@@ -15,6 +15,7 @@ from typing import Callable, Protocol
 from . import config
 from .stats import StatsTracker
 from .monitor import (
+    Alert,
     Baseline,
     Gate,
     Monitor,
@@ -38,6 +39,7 @@ RETRY_SECONDS = 30.0  # how often to try the camera again after it failed
 MAX_READ_FAILURES = 10  # consecutive bad frames before we give the camera up
 IN_USE_POLL_SECONDS = 5.0  # how often to check whether a call app grabbed the camera/mic
 LOCK_POLL_SECONDS = 2.0  # how often to check whether the screen is locked
+WARN_AFTER_SECONDS = 3.0  # bad posture turns the icon amber once it lasts this long
 
 CAMERA_DOWN = "SitRight: camera busy / not found"
 DAY_STARTS_AT = 6  # "pause until tomorrow" ends at this hour
@@ -322,7 +324,7 @@ class Engine(threading.Thread):
         if summary != self._summary:  # changes about once a minute at most
             self._summary = summary
             self.on_menu()
-        self._report(status)
+        self._report(status, now)
         fps = FPS if status.face else AWAY_FPS
         return max(0.0, 1 / fps - (self._clock() - now))
 
@@ -460,14 +462,18 @@ class Engine(threading.Thread):
         else:
             self.on_notify("SitRight", "Done. I'll let you know if you slouch.")
 
-    def _report(self, s: Status) -> None:
+    def _report(self, s: Status, now: float) -> None:
         if not s.face:
             self.on_change("idle", "SitRight: no one at the desk")
             return
+        # A nod or a reach for the mouse dips the head for a moment. Only show
+        # what has lasted a few seconds, or the icon flickers amber all day.
+        slouching = self.monitor.bad_for(Alert.SLOUCH, now) >= WARN_AFTER_SECONDS
+        too_close = self.monitor.bad_for(Alert.TOO_CLOSE, now) >= WARN_AFTER_SECONDS
         parts = []
-        if s.slouching:
+        if slouching:
             parts.append("slouching")
-        if s.too_close:
+        if too_close:
             parts.append("too close")
         if s.looking_down:
             parts.append("looking down")
@@ -476,4 +482,5 @@ class Engine(threading.Thread):
         parts.append(f"sitting {s.sitting_minutes:.0f} min")
         if self.snoozed:
             parts.append("reminders snoozed")
-        self.on_change("ok" if s.ok else "warn", "SitRight: " + ", ".join(parts))
+        state = "warn" if slouching or too_close else "ok"
+        self.on_change(state, "SitRight: " + ", ".join(parts))

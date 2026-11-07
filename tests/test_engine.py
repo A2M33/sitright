@@ -254,6 +254,25 @@ def test_sensitivity_applies_live_and_is_saved():
     assert h.engine.settings.thresholds.hold_seconds == 30
 
 
+def test_a_nod_does_not_turn_the_icon_amber():
+    states = []
+    h = Harness(lambda now: SLOUCH if now % 10 < 1 else GOOD)  # head dips 1 s in every 10
+    h.engine.on_change = lambda state, tip: states.append((state, tip))
+    h.run_until(60)
+    assert {state for state, _ in states} == {"ok"}  # it used to flicker amber each time
+    assert not any("slouching" in tip for _, tip in states)
+
+
+def test_a_real_slouch_turns_the_icon_amber_within_seconds():
+    states = []
+    h = Harness(lambda now: GOOD if now < 10 else SLOUCH)
+    h.engine.on_change = lambda state, tip: states.append((h.clock.t, state, tip))
+    h.run_until(20)
+    first = next(t for t, state, _ in states if state == "warn")
+    assert 13 <= first < 13.2
+    assert "slouching" in states[-1][2]
+
+
 def test_switching_a_reminder_off_applies_live_and_is_saved():
     h = Harness(lambda now: SLOUCH)
     h.run_until(5)

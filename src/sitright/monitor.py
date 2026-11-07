@@ -286,6 +286,11 @@ class Monitor:
         self.gate.last_shown = now
         return [alert]
 
+    def bad_for(self, alert: Alert, now: float) -> float:
+        """How long the posture behind `alert` has been off without a break, in seconds."""
+        since = self._bad_since.get(alert)
+        return 0.0 if since is None else now - since
+
     def recalibrate(self, baseline: Baseline) -> None:
         """Use a new pose. The sitting timer and the blink count carry on: you never left."""
         self.baseline = baseline
