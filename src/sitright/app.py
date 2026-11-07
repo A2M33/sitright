@@ -479,11 +479,13 @@ def run_preview(camera: int | None = None) -> None:
                 else:
                     try:
                         settings.baseline = Baseline.from_samples(calib)
-                        config.save(settings)
                         monitor = new_monitor(settings.baseline)
                         warnings = pose_warnings(calib)
+                        config.save(settings)
                     except ValueError:
                         warnings = ["I couldn't see your face. Press C to try again."]
+                    except OSError as exc:  # the pose still works until the preview closes
+                        warnings.append(f"Couldn't save the pose: {exc}")
                     calib, calib_start = [], None
             if phase in ("idle", "done"):
                 if monitor is None:

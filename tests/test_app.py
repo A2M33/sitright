@@ -258,6 +258,30 @@ def test_preview_stops_on_a_dead_camera(fake_window, monkeypatch, capsys):
     assert detector.closed
 
 
+def test_preview_calibration_survives_a_failed_save(fake_window, monkeypatch):
+    from sitright import app, config
+    from sitright.monitor import Sample
+
+    good = Sample(ear=0.3, nose_y=0.5, face_width=0.3)
+    detector = PreviewDetector([good] * 60)
+    monkeypatch.setattr(app, "open_detector", lambda camera: detector)
+    ticks = iter(range(10_000))
+    monkeypatch.setattr(app.time, "monotonic", lambda: next(ticks) * 0.25)
+
+    def no_disk(_settings):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(config, "save", no_disk)
+    drawn = []
+    monkeypatch.setattr(app, "draw_lines", lambda frame, lines, *a, **k: drawn.append(lines))
+    fake_window["keys"] = [ord("c")]
+    fake_window["open_for"] = 40
+    app.run_preview(camera=0)  # used to end with the OSError
+    texts = [text for text, _color in drawn[-1]]
+    assert texts[0] == "Posture: good"  # the new pose is in use anyway
+    assert any("Couldn't save the pose" in text for text in texts)
+
+
 def test_preview_explains_a_missing_model(fake_window, monkeypatch, capsys):
     from sitright import app
     from sitright.engine import ModelError
