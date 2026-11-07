@@ -198,7 +198,8 @@ class Engine(threading.Thread):
 
     @property
     def paused(self) -> bool:
-        return self._paused_until is not None and self._wall() < self._paused_until
+        until = self._paused_until  # once: Resume on the tray thread may clear it meanwhile
+        return until is not None and self._wall() < until
 
     def pause_for(self, seconds: float) -> None:
         self._paused_until = self._wall() + seconds
@@ -238,10 +239,12 @@ class Engine(threading.Thread):
         self.on_menu()
 
     def pause_text(self) -> str:
-        if not self.paused:
+        # Read once: the tray thread may resume between a check and a second read.
+        until, wall = self._paused_until, self._wall()
+        if until is None or wall >= until:
             return ""
-        now = datetime.fromtimestamp(self._wall())
-        return "paused " + describe_until(datetime.fromtimestamp(self._paused_until), now)
+        now = datetime.fromtimestamp(wall)
+        return "paused " + describe_until(datetime.fromtimestamp(until), now)
 
     def request_calibration(self) -> None:
         self._calibrate.set()

@@ -201,6 +201,19 @@ def test_resume_early():
     assert h.engine.detector is not None
 
 
+def test_resuming_from_the_tray_while_the_tooltip_is_built_is_not_an_error():
+    h = Harness(lambda now: GOOD)
+    h.engine.pause_for(60)
+    clock = h.engine._wall
+
+    def resumed_meanwhile():  # the tray thread clicks Resume mid-way
+        h.engine._paused_until = None
+        return clock()
+
+    h.engine._wall = resumed_meanwhile
+    assert h.engine.pause_text() == "paused until 10:01"  # used to raise TypeError
+
+
 def test_tomorrow_morning():
     assert tomorrow_morning(datetime(2026, 3, 2, 22, 15)) == datetime(2026, 3, 3, 6, 0)
     assert tomorrow_morning(datetime(2026, 3, 2, 6, 0)) == datetime(2026, 3, 3, 6, 0)
