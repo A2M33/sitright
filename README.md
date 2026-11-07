@@ -37,7 +37,7 @@ sitright-tray
 
 `sitright-tray` starts the app with no console window. `sitright` starts the same app from a terminal and takes the options under [Preview mode](#preview-mode). With Git installed, `pip install git+https://github.com/A2M33/sitright` works too.
 
-On first start SitRight downloads MediaPipe's face model (about 4 MB) and opens a small calibration window. Sit the way you want to sit, look at the screen, and wait for the 3-2-1 countdown. SitRight then records your pose for 3 seconds and saves it as your baseline.
+On first start SitRight downloads MediaPipe's face model (about 4 MB) and opens a small calibration window. Sit the way you want to sit, look at the screen, and wait for the 3-2-1 countdown. SitRight then records your pose for 3 seconds and saves it as your baseline. If the download fails, SitRight tries again every 30 seconds.
 
 On Linux you may need a tray extension for your desktop (for GNOME: AppIndicator) and `notify-send` for notifications.
 
@@ -58,7 +58,7 @@ Right-click the icon.
 | Camera | lists the cameras that deliver a picture. Picking another one saves it and starts a new calibration. |
 | Start with Windows | adds SitRight to your user's Run key in the registry |
 
-Menu changes apply at once and go straight into `config.json`.
+Settings changed in the menu apply at once and go straight into `config.json`. A pause or a snooze ends when you quit SitRight.
 
 ### Pausing during calls
 
