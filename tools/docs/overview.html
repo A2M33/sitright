@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SitRight overview</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="docs.css">
+</head>
+<body class="overview">
+<main class="sheet">
+  <section class="states" aria-label="Tray icon">
+    <h2>The tray icon</h2>
+    <div class="state">
+      <img src="_build/tray-ok.png" width="48" height="48" alt="">
+      <div><p class="value">Sitting well</p><p class="tag">Green lamp: you're at the desk and your posture and distance are fine</p></div>
+    </div>
+    <div class="state">
+      <img src="_build/tray-warn.png" width="48" height="48" alt="">
+      <div><p class="value">Slouching or too close</p><p class="tag">Amber lamp and a slumped figure, once it has lasted 3 seconds</p></div>
+    </div>
+    <div class="state">
+      <img src="_build/tray-idle.png" width="48" height="48" alt="">
+      <div><p class="value">Paused or away</p><p class="tag">Grey lamp: paused, in a call, screen locked or nobody at the desk</p></div>
+    </div>
+    <div class="state">
+      <img src="_build/tray-fault.png" width="48" height="48" alt="">
+      <div><p class="value">Camera or model problem</p><p class="tag">Red lamp: SitRight tries again every 30 seconds</p></div>
+    </div>
+  </section>
+
+  <figure class="shot">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="_build/preview-slouching-dark.png">
+      <img src="_build/preview-slouching-light.png" alt="">
+    </picture>
+    <figcaption class="tag">sitright --preview</figcaption>
+  </figure>
+</main>
+</body>
+</html>

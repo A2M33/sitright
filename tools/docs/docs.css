@@ -1,0 +1,62 @@
+/* SitRight README images. Uses only the variables from tokens.css. */
+
+p, figure, h2 { margin: 0; }
+body { padding: var(--s7); overflow: hidden; }
+body.header { width: 1280px; height: 640px; }
+body.overview { width: 1200px; height: 750px; }
+
+.sheet {
+  height: 100%;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+}
+
+/* Header */
+.header .sheet { display: grid; grid-template-rows: 1fr auto; }
+.top {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--s6);
+  align-items: center;
+  padding: 0 var(--s6);
+}
+.head { display: grid; grid-template-columns: auto 1fr; gap: var(--s5); align-items: center; }
+.icon { display: block; }
+.head h1 { font-size: 3.6rem; line-height: 1; margin: 0 0 var(--s2); letter-spacing: 0; }
+.sub { font-size: var(--t-lg); color: var(--ink-2); max-width: 32ch; line-height: 1.4; }
+
+.tray {
+  padding: var(--s4) var(--s6) var(--s4) var(--s4);
+  background: var(--inset);
+  border-radius: var(--r-control);
+  display: grid;
+  gap: var(--s2);
+}
+.tip { font-size: var(--t-lg); color: var(--ink); display: flex; align-items: center; gap: var(--s3); }
+.menu { font-size: var(--t-md); color: var(--ink-2); padding-left: calc(32px + var(--s3)); }
+
+.readings { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); }
+.cell { padding: var(--s5) var(--s6); }
+.cell + .cell { border-left: 1px solid var(--line); }
+.cell .reading { margin-bottom: var(--s2); }
+.cell .tag { font-size: var(--t-md); }
+
+/* Overview */
+.overview .sheet {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--s6);
+  align-items: center;
+  padding: var(--s6);
+}
+.states { display: grid; gap: var(--s5); }
+.states h2 { font-size: var(--t-xl); margin-bottom: var(--s1); }
+.state { display: grid; grid-template-columns: 48px 1fr; gap: var(--s4); align-items: center; }
+.state img { display: block; }
+.value { font-size: var(--t-lg); font-weight: 500; line-height: 1.25; }
+.state .tag { font-size: var(--t-md); line-height: 1.35; max-width: 36ch; }
+
+.shot { display: grid; gap: var(--s2); justify-items: center; }
+.shot img { display: block; height: 560px; width: auto; border: 1px solid var(--line); border-radius: 6px; }
+.shot figcaption { font-family: var(--font-code); font-size: var(--t-sm); }
