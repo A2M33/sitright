@@ -41,7 +41,7 @@ IN_USE_POLL_SECONDS = 5.0  # how often to check whether a call app grabbed the c
 LOCK_POLL_SECONDS = 2.0  # how often to check whether the screen is locked
 WARN_AFTER_SECONDS = 3.0  # bad posture turns the icon amber once it lasts this long
 
-CAMERA_DOWN = "SitRight: camera busy / not found"
+CAMERA_DOWN = "SitRight: camera busy or not found"
 MODEL_MISSING = "SitRight: can't download the face model, retrying"
 DAY_STARTS_AT = 6  # "pause until tomorrow" ends at this hour
 SNOOZE_SECONDS = 15 * 60
@@ -371,7 +371,7 @@ class Engine(threading.Thread):
 
     def _open_camera(self, now: float) -> bool:
         if self._retry_at is not None and now < self._retry_at:
-            self.on_change("idle", self._failure_tip)
+            self.on_change("fault", self._failure_tip)
             return False
         try:
             self.detector = self._open_detector(self.camera)
@@ -400,7 +400,7 @@ class Engine(threading.Thread):
             self._failure_tip = MODEL_MISSING
         else:
             self._failure_tip = "SitRight: error"
-        self.on_change("idle", self._failure_tip)
+        self.on_change("fault", self._failure_tip)
         if not self._failing:  # tell the user once per outage, not every 30 seconds
             self._failing = True
             self.on_notify("SitRight", f"{exc} Trying again every {RETRY_SECONDS:.0f} seconds.")
@@ -445,7 +445,7 @@ class Engine(threading.Thread):
                     lines = [str(count), "Sit the way you want to sit"] + hints[:1]
                 else:
                     hint = "Look at the screen" if sample else "I can't see your face."
-                    lines = ["Hold still...", hint]
+                    lines = ["Hold still", hint]
                 if not view.show(getattr(self.detector, "last_frame", None), lines):
                     kept = "Your old pose is kept." if self.monitor else "Calibrate from the tray menu."
                     self.on_notify("SitRight", f"Calibration cancelled. {kept}")

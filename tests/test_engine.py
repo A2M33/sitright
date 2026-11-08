@@ -74,6 +74,7 @@ class Harness:
         self.slept = 0.0  # wall-clock time the fake clock didn't see
         self.opens: list[float] = []
         self.tooltips: list[str] = []
+        self.states: list[str] = []
         self.notes: list[str] = []
         self.cameras: list[int] = []
         self.saved: list[Settings] = []
@@ -87,7 +88,7 @@ class Harness:
 
         self.engine = Engine(
             0,
-            lambda state, tip: self.tooltips.append(tip),
+            lambda state, tip: (self.states.append(state), self.tooltips.append(tip)),
             lambda title, msg: self.notes.append(msg),
             settings=Settings(baseline=baseline),
             open_detector=opener,
@@ -120,6 +121,7 @@ def test_camera_failure_keeps_the_sitting_timer():
     h.run_until(310)
     assert h.engine.detector is None  # camera released while it's broken
     assert h.tooltips[-1] == CAMERA_DOWN
+    assert h.states[-1] == "fault"  # the red lamp
     assert "no one at the desk" not in h.tooltips[-1]
     h.run_until(332)  # first retry is 30 s after the failure
     # Not treated as "you left": the timer and the blink window carried on.
@@ -148,6 +150,7 @@ def test_tooltip_says_when_the_face_model_is_missing():
     h.engine._open_detector = no_model
     h.run_until(40)
     assert h.tooltips[-1] == MODEL_MISSING  # was a bare "SitRight: error"
+    assert h.states[-1] == "fault"
     assert len(attempts) == 2 and len(h.notes) == 1
 
 
@@ -317,7 +320,7 @@ def test_calibration_counts_down_then_captures_and_saves():
     h.run_until(10)
     firsts = [lines[0] for lines in view.frames]
     assert firsts[0] == "3"
-    assert firsts.index("3") < firsts.index("2") < firsts.index("1") < firsts.index("Hold still...")
+    assert firsts.index("3") < firsts.index("2") < firsts.index("1") < firsts.index("Hold still")
     assert view.closed
     assert h.engine.monitor is not None
     assert h.saved[-1].baseline.nose_y == GOOD.nose_y
@@ -425,7 +428,7 @@ def test_calibration_starts_over_when_the_camera_comes_back():
 def test_quitting_during_calibration_keeps_the_saved_pose():
     class QuitView(FakeView):
         def show(self, frame, lines):
-            if lines[0] == "Hold still...":
+            if lines[0] == "Hold still":
                 h.engine.stop()
             return super().show(frame, lines)
 

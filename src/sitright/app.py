@@ -6,11 +6,11 @@ import ctypes
 import sys
 import threading
 import time
-from typing import Callable
-
-from PIL import Image, ImageDraw
+from pathlib import Path
 
 from . import autostart, config, inuse, stats
+from .icons import make_icon
+from .screen import Cell, Screen, dark_mode, fit_picture, render, to_bgr
 from .engine import (
     CALIBRATION_SECONDS,
     COUNTDOWN,
@@ -27,13 +27,11 @@ from .monitor import (
     Baseline,
     Monitor,
     Sample,
+    Status,
     calibration_phase,
     pose_warnings,
 )
 
-COLORS = {"ok": "#3fb950", "warn": "#d29922", "idle": "#6e7681"}
-ICON_SIZE = 64
-ICON_SUPERSAMPLE = 4
 REMINDER_LABELS = {
     "slouch": "Sit up straight",
     "too_close": "Lean back",
@@ -41,32 +39,13 @@ REMINDER_LABELS = {
     "take_break": "Take a break",
 }
 SYSTEM_DPI_AWARE = 1
-Line = tuple[str, tuple[int, int, int]]  # text and its BGR colour
-WHITE = (255, 255, 255)
-AMBER = (0, 200, 255)
+DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+WM_SETICON, ICON_SMALL, ICON_BIG = 0x80, 0, 1
+IMAGE_ICON, LR_LOADFROMFILE = 1, 0x10
+WINDOW_ICON = Path(__file__).with_name("assets") / "sitright.ico"  # written by tools/make_icons.py
 PREVIEW_TITLE = "SitRight preview (C = calibrate, Q = quit)"
 MAX_NOTIFY_TITLE = 63
 MAX_NOTIFY_TEXT = 255
-
-
-def make_icon(state: str) -> Image.Image:
-    """The tray icon. Drawn large and scaled down, since PIL shapes have jagged edges."""
-    size = ICON_SIZE * ICON_SUPERSAMPLE
-
-    def px(*values: float) -> tuple[int, ...]:
-        return tuple(round(v * ICON_SUPERSAMPLE) for v in values)
-
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    ImageDraw.Draw(img).ellipse(px(2, 2, 62, 62), fill=COLORS[state])
-    # A seated figure, thick enough to survive the 16-pixel tray size.
-    figure = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    d = ImageDraw.Draw(figure)
-    d.ellipse(px(23, 8, 41, 26), fill="white")
-    d.rounded_rectangle(px(25, 29, 39, 55), radius=px(6)[0], fill="white")
-    if state == "warn":  # slumped, so the state doesn't rest on telling amber from green
-        figure = figure.rotate(-24, resample=Image.BICUBIC, center=px(30, 54))
-    img.alpha_composite(figure)
-    return img.resize((ICON_SIZE, ICON_SIZE), Image.LANCZOS)
 
 
 def shorten(text: str, limit: int) -> str:
@@ -300,68 +279,47 @@ def display_scale() -> float:
         return 1.0
 
 
-def fit_size(width: int, height: int, box: tuple[int, int]) -> tuple[int, int]:
-    """The largest size inside `box` with the proportions of width x height."""
-    ratio = min(box[0] / width, box[1] / height)
-    return round(width * ratio), round(height * ratio)
-
-
-def wrap_text(text: str, max_width: int, measure: Callable[[str], int]) -> list[str]:
-    """Split `text` at spaces into lines that fit. A word too wide by itself stays whole."""
-    lines: list[str] = []
-    line = ""
-    for word in text.split():
-        longer = f"{line} {word}" if line else word
-        if line and measure(longer) > max_width:
-            lines.append(line)
-            line = word
-        else:
-            line = longer
-    return lines + [line] if line else lines
-
-
-def text_weight(scale: float) -> int:
-    return max(1, round(scale * 2))
-
-
-def layout_lines(lines: list[Line], scale: float, max_width: int) -> list[Line]:
-    """`lines` wrapped to `max_width` pixels, each piece keeping its colour."""
-    import cv2
-
-    def measure(text: str) -> int:
-        return cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, text_weight(scale))[0][0]
-
-    return [(part, color) for text, color in lines for part in wrap_text(text, max_width, measure)]
-
-
-def draw_lines(frame, lines: list[Line], scale: float = 0.8, bottom: bool = False) -> None:
-    """Write `lines` on a darkened band across the top (or bottom) of the frame."""
-    import cv2
-
-    if not lines:
+def style_window(title: str, dark: bool) -> None:
+    """Give one of our cv2 windows the SitRight icon, and a dark title bar in dark mode."""
+    if sys.platform != "win32":
         return
-    height, width = frame.shape[:2]
-    margin, step = round(20 * scale), round(40 * scale)
-    wrapped = layout_lines(lines, scale, width - 2 * margin)
-    band = min(height, step * len(wrapped) + margin // 2)
-    top = height - band if bottom else 0
-    frame[top : top + band] = frame[top : top + band] * 0.35
-    for i, (text, color) in enumerate(wrapped):
-        org = (margin, top + step * (i + 1) - step // 4)
-        cv2.putText(
-            frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, color, text_weight(scale), cv2.LINE_AA
-        )
+    from ctypes import wintypes
+
+    try:
+        user32 = ctypes.WinDLL("user32")
+        user32.FindWindowW.restype = wintypes.HWND
+        user32.LoadImageW.restype = wintypes.HANDLE
+        user32.LoadImageW.argtypes = [wintypes.HINSTANCE, wintypes.LPCWSTR, wintypes.UINT,
+                                      ctypes.c_int, ctypes.c_int, wintypes.UINT]
+        user32.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+        hwnd = user32.FindWindowW(None, title)
+        if not hwnd:
+            return
+        for which, size in ((ICON_SMALL, 16), (ICON_BIG, 32)):
+            px = round(size * display_scale())
+            icon = user32.LoadImageW(None, str(WINDOW_ICON), IMAGE_ICON, px, px, LR_LOADFROMFILE)
+            if icon:
+                user32.SendMessageW(hwnd, WM_SETICON, which, icon)
+        if dark:
+            on = ctypes.c_int(1)
+            ctypes.WinDLL("dwmapi").DwmSetWindowAttribute(
+                hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ctypes.byref(on), ctypes.sizeof(on)
+            )
+    except (OSError, AttributeError):
+        pass  # an older Windows keeps the plain window look
 
 
-def draw_countdown(frame, number: str) -> None:
-    import cv2
-
-    h, w = frame.shape[:2]
-    font, scale, thick = cv2.FONT_HERSHEY_SIMPLEX, h / 90, max(4, h // 40)
-    (tw, th), _ = cv2.getTextSize(number, font, scale, thick)
-    org = ((w - tw) // 2, (h + th) // 2)
-    cv2.putText(frame, number, org, font, scale, (0, 0, 0), thick + 6, cv2.LINE_AA)
-    cv2.putText(frame, number, org, font, scale, WHITE, thick, cv2.LINE_AA)
+def calibration_screen(lines: list[str]) -> Screen:
+    """The engine's calibration lines: a countdown number or "Hold still", then hints."""
+    if not lines:
+        return Screen()
+    counting = lines[0].isdigit()
+    return Screen(
+        lamp="idle" if counting else "live",
+        reading=lines[0],
+        label=lines[1] if len(lines) > 1 else "",
+        notes=lines[2:],
+    )
 
 
 def center_window(title: str, width: int, height: int) -> None:
@@ -372,30 +330,45 @@ def center_window(title: str, width: int, height: int) -> None:
         cv2.moveWindow(title, max(0, (metrics(0) - width) // 2), max(0, (metrics(1) - height) // 2))
 
 
+def monitor_screen(s: Status) -> Screen:
+    """The preview's panel while it compares frames with the calibrated pose."""
+    if not s.face:
+        lamp, reading = "idle", "No face in view"
+    elif s.slouching or s.too_close:
+        lamp = "warn"
+        reading = " and ".join(p for p, bad in (("Slouching", s.slouching), ("too close", s.too_close)) if bad)
+        reading = reading[0].upper() + reading[1:]
+    else:
+        lamp, reading = "ok", "Sitting well"
+    bpm = "Measuring" if s.blinks_per_minute is None else f"{s.blinks_per_minute:.0f}/min"
+    return Screen(
+        lamp=lamp,
+        reading=reading,
+        label="Press C to calibrate again, Q to quit",
+        cells=[
+            Cell("Slouching" if s.slouching else "Good", "Posture"),
+            Cell("Too close" if s.too_close else "Good", "Distance"),
+            Cell(bpm, "Blinks"),
+        ],
+    )
+
+
 class CvCalibrationView:
     """A small always-on-top window showing the camera, the countdown and hints."""
 
     TITLE = "SitRight calibration (Esc = cancel)"
-    SIZE = (480, 360)  # at 100% display scaling
+    SIZE = (480, 360)  # camera picture box at 100% display scaling
 
     def __init__(self) -> None:
         self._shown = False
         self._scale = display_scale()
+        self._dark = dark_mode()
 
     def compose(self, frame, lines: list[str]):
-        """The picture to show: mirrored like a selfie camera, with the text on top."""
-        import cv2
-
-        h, w = frame.shape[:2]
+        """The window's image: the camera mirrored like a selfie, the status panel under it."""
         box = (round(self.SIZE[0] * self._scale), round(self.SIZE[1] * self._scale))
-        img = cv2.resize(cv2.flip(frame, 1), fit_size(w, h, box))
-        text = lines
-        if lines and lines[0].isdigit():
-            draw_countdown(img, lines[0])
-            text = lines[1:]
-        colored = [(t, AMBER if i else WHITE) for i, t in enumerate(text)]
-        draw_lines(img, colored, scale=0.6 * self._scale, bottom=True)
-        return img
+        img = render(fit_picture(frame, box), calibration_screen(lines), self._scale, self._dark)
+        return to_bgr(img)
 
     def show(self, frame, lines: list[str]) -> bool:
         import cv2
@@ -407,6 +380,7 @@ class CvCalibrationView:
         if not self._shown:
             self._shown = True
             cv2.setWindowProperty(self.TITLE, cv2.WND_PROP_TOPMOST, 1)
+            style_window(self.TITLE, self._dark)
             center_window(self.TITLE, img.shape[1], img.shape[0])
         if cv2.waitKey(1) & 0xFF == 27:
             return False
@@ -430,6 +404,7 @@ def run_preview(camera: int | None = None) -> None:
 
     enable_high_dpi()
     scale = display_scale()
+    dark = dark_mode()
     settings, problems = config.read()
     for problem in problems:
         print("config.json:", problem)
@@ -448,6 +423,7 @@ def run_preview(camera: int | None = None) -> None:
     calib_start: float | None = None
     warnings: list[str] = []
     failures = 0
+    shown = False
     try:
         while True:
             now = time.monotonic()
@@ -461,21 +437,20 @@ def run_preview(camera: int | None = None) -> None:
                 time.sleep(1 / FPS)
                 continue
             failures = 0
-            frame = cv2.flip(detector.last_frame, 1)
-            if scale != 1:
-                frame = cv2.resize(frame, None, fx=scale, fy=scale)
-            lines: list[Line] = []
+            frame = detector.last_frame
+            h, w = frame.shape[:2]
+            picture = fit_picture(frame, (round(w * scale), round(h * scale)))
+            screen = Screen()
             phase = "idle"
             if calib_start is not None:
                 phase, count = calibration_phase(now - calib_start, COUNTDOWN, CALIBRATION_SECONDS)
                 if phase == "countdown":
-                    draw_countdown(frame, str(count))
                     hints = pose_warnings([sample]) if sample else ["I can't see your face yet."]
-                    lines += [(h, AMBER) for h in hints]
+                    screen = Screen("idle", str(count), "Sit the way you want to sit", notes=hints)
                 elif phase == "capture":
                     if sample:
                         calib.append(sample)
-                    lines.append(("Hold still...", AMBER))
+                    screen = Screen("live", "Hold still", "Look at the screen")
                 else:
                     try:
                         settings.baseline = Baseline.from_samples(calib)
@@ -489,22 +464,18 @@ def run_preview(camera: int | None = None) -> None:
                     calib, calib_start = [], None
             if phase in ("idle", "done"):
                 if monitor is None:
-                    lines.append(("Press C to calibrate", AMBER))
+                    screen = Screen("idle", "Not calibrated", "Press C to calibrate, Q to quit")
                 else:
                     alerts = monitor.update(sample, now)
-                    s = monitor.status
-                    green, amber = (80, 185, 63), (34, 153, 210)
-                    lines.append(("Posture: " + ("slouching" if s.slouching else "good"),
-                                  amber if s.slouching else green))
-                    lines.append(("Distance: " + ("too close" if s.too_close else "good"),
-                                  amber if s.too_close else green))
-                    bpm = "measuring..." if s.blinks_per_minute is None else f"{s.blinks_per_minute:.0f}/min"
-                    lines.append((f"Blinks: {bpm}", (230, 230, 230)))
+                    screen = monitor_screen(monitor.status)
                     for alert in alerts:
                         print(alert.value)
-                lines += [(w, AMBER) for w in warnings]
-            draw_lines(frame, lines, 0.8 * scale)
-            cv2.imshow(PREVIEW_TITLE, frame)
+                screen.notes += warnings
+            img = to_bgr(render(picture, screen, scale, dark))
+            cv2.imshow(PREVIEW_TITLE, img)
+            if not shown:
+                shown = True
+                style_window(PREVIEW_TITLE, dark)
             key = cv2.waitKey(max(1, int(1000 / FPS))) & 0xFF
             if key in (ord("q"), ord("Q"), 27):
                 break

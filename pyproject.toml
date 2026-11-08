@@ -38,6 +38,9 @@ sitright-tray = "sitright.__main__:main"
 [project.optional-dependencies]
 dev = ["pytest>=8.2"]
 
+[tool.setuptools.package-data]
+sitright = ["fonts/*.ttf", "fonts/OFL.txt", "assets/*.ico"]
+
 [tool.setuptools.dynamic]
 version = { attr = "sitright.__version__" }
 

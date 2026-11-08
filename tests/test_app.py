@@ -4,7 +4,8 @@ import time
 
 import pytest
 
-from sitright.app import TrayUpdater, finish, fit_size, make_icon, notify, wrap_text
+from sitright.app import TrayUpdater, finish, make_icon, notify
+from sitright.screen import fit_size, wrap_text
 
 
 class FakeIcon:
@@ -273,13 +274,19 @@ def test_preview_calibration_survives_a_failed_save(fake_window, monkeypatch):
 
     monkeypatch.setattr(config, "save", no_disk)
     drawn = []
-    monkeypatch.setattr(app, "draw_lines", lambda frame, lines, *a, **k: drawn.append(lines))
+    real_render = app.render
+
+    def spy(picture, screen, *a, **k):
+        drawn.append(screen)
+        return real_render(picture, screen, *a, **k)
+
+    monkeypatch.setattr(app, "render", spy)
     fake_window["keys"] = [ord("c")]
     fake_window["open_for"] = 40
     app.run_preview(camera=0)  # used to end with the OSError
-    texts = [text for text, _color in drawn[-1]]
-    assert texts[0] == "Posture: good"  # the new pose is in use anyway
-    assert any("Couldn't save the pose" in text for text in texts)
+    last = drawn[-1]
+    assert last.cells[0].label == "Posture" and last.cells[0].value == "Good"  # the new pose is in use
+    assert any("Couldn't save the pose" in note for note in last.notes)
 
 
 def test_preview_explains_a_missing_model(fake_window, monkeypatch, capsys):
@@ -312,49 +319,66 @@ def test_fit_size_keeps_the_proportions():
 
 @pytest.mark.parametrize("scale", [1.0, 1.5, 2.0])
 def test_every_calibration_hint_fits_the_window(monkeypatch, scale):
-    cv2 = pytest.importorskip("cv2", exc_type=ImportError)
-    from sitright import app
+    numpy = pytest.importorskip("numpy")
+    from sitright import app, screen
     from sitright.monitor import Sample, pose_warnings
 
-    numpy = pytest.importorskip("numpy")
     monkeypatch.setattr(app, "display_scale", lambda: scale)
     view = app.CvCalibrationView()
     bad_pose = Sample(ear=0.3, nose_y=0.9, face_width=0.8, pitch=40.0, nose_x=0.9)
     hints = pose_warnings([bad_pose])
     assert len(hints) == 3
-    img = view.compose(numpy.zeros((480, 640, 3), numpy.uint8), ["3", "Sit up"] + hints[:1])
-    assert img.shape[1] == round(480 * scale)
-    text_scale = 0.6 * scale
-    margin = round(20 * text_scale)
-    wrapped = app.layout_lines([(h, app.AMBER) for h in hints], text_scale, img.shape[1] - 2 * margin)
-    assert len(wrapped) > len(hints)  # these used to run off the right edge
-    for text, _color in wrapped:
-        width = cv2.getTextSize(
-            text, cv2.FONT_HERSHEY_SIMPLEX, text_scale, app.text_weight(text_scale)
-        )[0][0]
-        assert width <= img.shape[1] - 2 * margin
+    # A camera on its side gives the narrowest window, so the hints must wrap.
+    img = view.compose(numpy.zeros((640, 480, 3), numpy.uint8), ["3", "Sit up"] + hints)
+    pad, inner = round(screen.PAD * scale), round(screen.INNER * scale)
+    assert img.shape[1] == round(270 * scale) + 2 * pad
+    room = img.shape[1] - 2 * pad - 2 * inner
+    wrapped = screen.note_lines(hints, scale, room)
+    assert len(wrapped) > len(hints)  # long hints wrap instead of running off the edge
+    note_font = screen.font("Regular", round(screen.TEXT * scale))
+    assert all(screen.text_width(text, note_font) <= room for text in wrapped)
 
 
 def test_a_wide_camera_is_not_stretched_in_the_calibration_window(monkeypatch):
-    pytest.importorskip("cv2", exc_type=ImportError)
     numpy = pytest.importorskip("numpy")
-    from sitright import app
+    from sitright import app, screen
 
     monkeypatch.setattr(app, "display_scale", lambda: 1.0)
-    img = app.CvCalibrationView().compose(numpy.zeros((360, 640, 3), numpy.uint8), ["Hold still..."])
-    assert img.shape[:2] == (270, 480)
+    frame = numpy.full((360, 640, 3), 200, numpy.uint8)
+    img = app.CvCalibrationView().compose(frame, ["Hold still"])
+    x, y = screen.picture_origin(1.0)
+    assert img.shape[1] == 480 + 2 * x
+    assert (img[y + 135, x : x + 480] == 200).all()  # full width
+    assert (img[y + 10 : y + 260, x + 240] == 200).all()  # 270 rows tall, not 360
+    assert not (img[y + 272, x + 240] == 200).all()
 
 
-def test_calibration_text_goes_on_a_band_at_the_bottom(monkeypatch):
-    pytest.importorskip("cv2", exc_type=ImportError)
+def test_calibration_text_goes_in_a_panel_under_the_picture(monkeypatch):
     numpy = pytest.importorskip("numpy")
-    from sitright import app
+    from sitright import app, screen
 
     monkeypatch.setattr(app, "display_scale", lambda: 1.0)
+    monkeypatch.setattr(app, "dark_mode", lambda: False)
     frame = numpy.full((480, 640, 3), 200, numpy.uint8)
-    img = app.CvCalibrationView().compose(frame, ["Hold still...", "Look at the screen"])
-    assert (img[10, 240] == 200).all()  # the face area stays as it was
-    assert img[-2, 2].max() < 100  # the band is dark so the text reads on any background
+    img = app.CvCalibrationView().compose(frame, ["Hold still", "Look at the screen"])
+    x, y = screen.picture_origin(1.0)
+    assert (img[y : y + 360, x + 10 : x + 470] == 200).all()  # nothing drawn over the face
+    assert img.shape[0] > y + 360 + 60  # the text lives below it
+    panel = tuple(int(screen.LIGHT["panel"][i : i + 2], 16) for i in (5, 3, 1))  # as BGR
+    assert tuple(img[-screen.PAD - 4, img.shape[1] - screen.PAD - 6]) == panel
+
+
+def test_preview_panel_names_the_bad_posture():
+    from sitright.app import monitor_screen
+    from sitright.monitor import Status
+
+    assert monitor_screen(Status(face=True)).lamp == "ok"
+    bad = monitor_screen(Status(face=True, slouching=True, too_close=True))
+    assert bad.lamp == "warn" and bad.reading == "Slouching and too close"
+    assert monitor_screen(Status()).lamp == "idle"
+    assert [c.value for c in monitor_screen(Status(face=True, blinks_per_minute=14.2)).cells] == [
+        "Good", "Good", "14/min"
+    ]
 
 
 def white_pixels(image):
@@ -367,7 +391,16 @@ def test_tray_icon_states_differ_by_shape_not_only_by_colour():
     assert all(icon.size == (64, 64) for icon in icons.values())
     ok, warn, idle = (white_pixels(icons[state]) for state in ("ok", "warn", "idle"))
     assert len(ok ^ idle) < 30  # the same figure, give or take the blended edge
-    assert len(ok ^ warn) > 200
+    assert len(ok ^ warn) > 120  # the figure slumps forward
+
+
+def test_tray_icon_lamp_colour_follows_the_state():
+    from sitright import icons
+
+    x, y = (round(v / icons.GRID * 64) for v in icons.LAMP_CENTER)
+    lamps = {state: make_icon(state).getpixel((x, y))[:3] for state in icons.STATES}
+    assert len(set(lamps.values())) == len(icons.STATES)
+    assert lamps["fault"][0] > 200 and lamps["fault"][1] < 120  # red
 
 
 def test_tray_icon_edges_are_smooth():
