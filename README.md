@@ -1,17 +1,20 @@
-<p align="center"><img src="docs/header.svg" alt="SitRight" width="100%"></p>
+![SitRight header: the app icon, a seated figure with an amber lamp, next to the name and "Posture, blink and break reminders from your webcam". A tray tooltip reads "SitRight: 14 blinks/min, sitting 32 min" above "Today: 82% upright, 3 breaks". Four readings below: 30 s of slouching before a reminder, 50 min at the desk before a break reminder, 20 face checks a second, and 0 images saved to disk or uploaded.](docs/header.png)
 
-<p align="center">
+<p>
   <a href="https://github.com/A2M33/sitright/actions/workflows/test.yml"><img alt="tests" src="https://github.com/A2M33/sitright/actions/workflows/test.yml/badge.svg"></a>
-  <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776ab">
-  <img alt="Runs offline" src="https://img.shields.io/badge/runs-offline-3fb950">
-  <a href="https://github.com/A2M33/sitright/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-3fb950"></a>
+  <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-56605a">
+  <img alt="Runs offline" src="https://img.shields.io/badge/runs-offline-56605a">
+  <a href="https://github.com/A2M33/sitright/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-56605a"></a>
 </p>
 
 Hours at a desk and you slouch without noticing. SitRight sits in the system tray, watches your posture through the webcam, and sends a notification when you slouch, lean into the screen or forget to get up.
 
-![The tray icon colours and two of the reminders](docs/overview.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/overview-dark.png">
+  <img src="docs/overview.png" alt="Left: the four tray icon states. A green lamp means you're sitting well, an amber lamp with a slumped figure means you've slouched or sat too close for 3 seconds, a grey lamp means paused or away, and a red lamp means the camera or face model isn't working. Right: the preview window with a drawn stand-in for the camera picture, an amber lamp next to the reading Slouching, and Posture slouching, Distance good and Blinks measuring underneath.">
+</picture>
 
-A demo GIF is on its way. I'm recording it on a real webcam, and until it's done the image above is all there is.
+A demo GIF is on its way. I'm recording it on a real webcam. Until then, the preview window above shows a drawn stand-in where your camera picture would be.
 
 SitRight runs on your computer. It reads each frame in memory, measures it and drops it. It never saves or uploads an image.
 
@@ -24,7 +27,7 @@ SitRight runs on your computer. It reads each frame in memory, measures it and d
 | Take a break | 50 minutes at the desk without leaving for at least 2 minutes |
 | Blink (off by default) | fewer than 8 blinks a minute. I haven't checked the blink counter on enough cameras to switch it on for everyone. Turn it on under Reminders if you want to try it. |
 
-Two reminders never arrive less than 2 minutes apart, and you see the same one at most once every 5 minutes. The tray icon turns green when your posture is fine, amber with a slumped figure once you've slouched or sat too close for 3 seconds, and grey when you've left the desk or SitRight is paused.
+Two reminders never arrive less than 2 minutes apart, and you see the same one at most once every 5 minutes. The lamp on the tray icon turns green when your posture is fine, amber once you've slouched or sat too close for 3 seconds (the figure slumps too), grey when you've left the desk or SitRight is paused, and red when the camera or the face model isn't working.
 
 ## Install
 
@@ -68,7 +71,7 @@ Noise filters such as NVIDIA Broadcast, Krisp and Voicemeeter hold the microphon
 
 ### When the camera fails
 
-If the camera disappears or another program grabs it, the tooltip reads "camera busy / not found" and SitRight tries again every 30 seconds. A short outage doesn't count as you leaving the desk. After 2 minutes without a picture SitRight can't tell where you went, so it starts the sitting timer over when the camera comes back.
+If the camera disappears or another program grabs it, the tooltip reads "camera busy or not found" and SitRight tries again every 30 seconds. A short outage doesn't count as you leaving the desk. After 2 minutes without a picture SitRight can't tell where you went, so it starts the sitting timer over when the camera comes back.
 
 ### Locked screens and sleep
 
@@ -129,6 +132,8 @@ The decision logic lives in `src/sitright/monitor.py` and `src/sitright/engine.p
 pip install -e ".[dev]"
 pytest
 ```
+
+The images in this README come from the same code: `python tools/docs/render.py` draws the icons with the tray's own drawing code and screenshots the real preview window on Windows, with a drawn picture in place of the camera.
 
 ## Privacy
 
