@@ -21,8 +21,8 @@ ICO_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
 
 
 def app_icon(size: int):
-    """The family app icon: the upright figure with the amber lamp."""
-    return icons.draw(icons.LAMPS["warn"], slumped=False, size=size)
+    """The family app icon: the upright figure with the cyan signal lamp."""
+    return icons.draw(icons.SIGNAL, slumped=False, size=size)
 
 
 def main() -> None:

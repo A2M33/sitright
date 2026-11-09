@@ -1,6 +1,6 @@
 """The tray icon, drawn from the A2M33 icon family.
 
-A slate tile with a light line glyph (a head over a straight back on a seat) and
+A navy tile with a light line glyph (a head over a straight back on a seat) and
 a status lamp in the top right corner. The lamp carries the state:
 
     ok     green lamp: you're at the desk and sitting well
@@ -18,16 +18,17 @@ from __future__ import annotations
 from PIL import Image, ImageDraw
 
 GRID = 512
-TILE = "#242b27"
-EDGE = "#3d4741"
-INK = "#e2e6e0"
+TILE = "#111a2d"
+EDGE = "#22304b"
+INK = "#e6edf7"
 LAMPS = {
-    "ok": "#6fb282",
-    "warn": "#f0ab2a",
-    "idle": "#56605a",
-    "fault": "#e2584d",
+    "ok": "#3fcf93",
+    "warn": "#f0b23c",
+    "idle": "#6b7c99",
+    "fault": "#ff6b6b",
 }
 STATES = tuple(LAMPS)
+SIGNAL = "#2fcbea"  # the family signal colour, for the app icon only
 STROKE = 30
 CHAIR_ALPHA = 0.45
 

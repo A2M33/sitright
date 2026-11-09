@@ -2,45 +2,36 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>SitRight header</title>
+<title>SitRight banner</title>
 <link rel="stylesheet" href="tokens.css">
-<link rel="stylesheet" href="docs.css">
+<link rel="stylesheet" href="banner.css">
+<script src="trace.js"></script>
+<style>
+  /* the real preview window (tools/shoot_windows.py), camera replaced by the drawn stand-in */
+  .window { position: absolute; left: 702px; top: 64px; height: 512px; display: block; }
+</style>
 </head>
-<body class="header">
+<body>
 <main class="sheet">
-  <div class="top">
-    <header class="head">
-      <img class="icon" src="_build/app-icon.png" width="104" height="104" alt="">
-      <div>
-        <h1>SitRight</h1>
-        <p class="sub">Posture, blink and break reminders from your webcam. It sits in the system tray and never saves an image.</p>
-      </div>
-    </header>
-
-    <section class="tray" aria-label="Tray">
-      <p class="tip"><img src="_build/tray-ok.png" width="32" height="32" alt="">SitRight: 14 blinks/min, sitting 32 min</p>
-      <p class="menu">Today: 82% upright, 3 breaks</p>
-    </section>
-  </div>
-
-  <section class="readings">
-    <div class="cell">
-      <p class="reading">30<small>s</small></p>
-      <p class="tag">Slouching before a reminder</p>
-    </div>
-    <div class="cell">
-      <p class="reading">50<small>min</small></p>
-      <p class="tag">At the desk before a break reminder</p>
-    </div>
-    <div class="cell">
-      <p class="reading">20<small>fps</small></p>
-      <p class="tag">Face checks while you sit there</p>
-    </div>
-    <div class="cell">
-      <p class="reading">0<small>images</small></p>
-      <p class="tag">Saved to disk or uploaded</p>
-    </div>
+  <section class="intro">
+    <img class="icon" src="_build/app-icon.png" alt="">
+    <h1>SitRight</h1>
+    <p class="sub">Posture, blink and break reminders from your webcam, in the system tray.</p>
+    <p class="meta"><span class="pad" data-state="live"></span>Python · MediaPipe · runs offline</p>
   </section>
+
+  <img class="window" src="_build/preview-slouching-dark.png" alt="">
+
+  <p class="callout" id="c-frame" style="left:520px;top:120px;width:150px"><b>Your camera</b>Each frame is measured in memory, then dropped</p>
+  <p class="callout lit" id="c-lamp" style="left:520px;top:430px;width:150px"><b>Slouching</b>After 30 s you get a notification</p>
 </main>
+<script>
+  const k = 512 / 692, win = (x, y) => [702 + x * k, 64 + y * k];
+  const right = id => { const r = document.getElementById(id).getBoundingClientRect(); return [r.right + 10, r.top + 11]; };
+  traces([
+    [right("c-frame"), win(16, 150), { r: 4 }],
+    [right("c-lamp"), win(44, 539), { lit: true, r: 0, tail: 0 }],
+  ]);
+</script>
 </body>
 </html>

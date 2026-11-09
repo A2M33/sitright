@@ -2,7 +2,7 @@
 
 1. The app and tray icons come from `sitright.icons`, the code that draws the tray.
 2. tools/shoot_windows.py opens the real preview window and screenshots it.
-3. Playwright renders header.html and overview.html with tokens.css and Barlow.
+3. Playwright renders header.html and overview.html with tokens.css and Archivo; header.html is the trace banner.
 
     pip install playwright
     python tools/docs/render.py
@@ -37,12 +37,12 @@ def main() -> None:
     subprocess.run([sys.executable, str(HERE.parent / "shoot_windows.py"), str(BUILD)], check=True)
 
     jobs = [
-        ("header.html", "header.png", (1280, 640), "light"),
+        ("header.html", "header.png", (1280, 640), "dark"),
         ("overview.html", "overview.png", (1200, 750), "light"),
         ("overview.html", "overview-dark.png", (1200, 750), "dark"),
     ]
     with sync_playwright() as p:
-        browser = p.chromium.launch(channel="msedge")
+        browser = p.chromium.launch(channel="msedge", args=["--disable-lcd-text"])
         for page_name, out, (w, h), scheme in jobs:
             page = browser.new_page(viewport={"width": w, "height": h}, color_scheme=scheme)
             page.goto((HERE / page_name).as_uri())

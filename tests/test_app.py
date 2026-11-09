@@ -365,7 +365,7 @@ def test_calibration_text_goes_in_a_panel_under_the_picture(monkeypatch):
     assert (img[y : y + 360, x + 10 : x + 470] == 200).all()  # nothing drawn over the face
     assert img.shape[0] > y + 360 + 60  # the text lives below it
     panel = tuple(int(screen.LIGHT["panel"][i : i + 2], 16) for i in (5, 3, 1))  # as BGR
-    assert tuple(img[-screen.PAD - 4, img.shape[1] - screen.PAD - 6]) == panel
+    assert tuple(img[-screen.PAD - screen.PANEL_RADIUS, img.shape[1] - screen.PAD - screen.PANEL_RADIUS - 2]) == panel
 
 
 def test_preview_panel_names_the_bad_posture():

@@ -2,8 +2,8 @@
 
 The camera picture sits on top; under it a panel with the status lamp, one big
 reading with a small label, optional smaller readings and wrapped notes. Colours
-are the A2M33 "control room" tokens, light or dark following the Windows theme.
-Barlow ships in `fonts/`.
+are the A2M33 "trace" tokens, light or dark following the Windows theme.
+Archivo ships in `fonts/`.
 """
 
 from __future__ import annotations
@@ -19,12 +19,12 @@ from PIL import Image, ImageColor, ImageDraw, ImageFont, ImageOps
 FONTS = Path(__file__).with_name("fonts")
 
 LIGHT = {
-    "cab": "#e3e5e0", "panel": "#f4f5f2", "inset": "#d5d9d3", "line": "#b9bfb7",
-    "ink": "#1d2420", "ink-2": "#56605a", "amber": "#d99211", "fault": "#b8322a", "ok": "#3d7a4f",
+    "cab": "#f2f5fa", "panel": "#ffffff", "inset": "#e4eaf3", "line": "#cdd6e4",
+    "ink": "#0c1628", "ink-2": "#4a5a73", "amber": "#c98a0b", "fault": "#c9343a", "ok": "#1d8458",
 }
 DARK = {
-    "cab": "#1b211e", "panel": "#242b27", "inset": "#2f3732", "line": "#3d4741",
-    "ink": "#e2e6e0", "ink-2": "#9aa59d", "amber": "#f0ab2a", "fault": "#e2584d", "ok": "#6fb282",
+    "cab": "#0b1222", "panel": "#111a2d", "inset": "#18233a", "line": "#22304b",
+    "ink": "#e6edf7", "ink-2": "#93a3bd", "amber": "#f0b23c", "fault": "#ff6b6b", "ok": "#3fcf93",
 }
 LAMP_COLOURS = {"ok": "ok", "warn": "amber", "live": "amber", "fault": "fault"}
 
@@ -32,7 +32,7 @@ LAMP_COLOURS = {"ok": "ok", "warn": "amber", "live": "amber", "fault": "fault"}
 PAD = 16  # around the picture and the panel
 GAP = 12  # between the picture and the panel
 INNER = 20  # inside the panel
-PANEL_RADIUS = 6
+PANEL_RADIUS = 8
 LAMP = 18
 TEXT = 15
 SMALL = 13
@@ -71,7 +71,7 @@ def dark_mode() -> bool:
 
 @lru_cache(maxsize=None)
 def font(weight: str, size: int) -> ImageFont.FreeTypeFont:
-    return ImageFont.truetype(str(FONTS / f"Barlow-{weight}.ttf"), size)
+    return ImageFont.truetype(str(FONTS / f"Archivo-{weight}.ttf"), size)
 
 
 def wrap_text(text: str, max_width: int, measure: Callable[[str], int]) -> list[str]:

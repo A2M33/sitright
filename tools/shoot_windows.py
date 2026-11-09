@@ -8,13 +8,11 @@ stand-in picture (tools/stand_in.py) and fixed face measurements.
 
 from __future__ import annotations
 
-import ctypes
 import sys
 import time
-from ctypes import wintypes
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageGrab
+from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -30,12 +28,23 @@ SLOUCHED = Sample(ear=0.3, nose_y=0.62, face_width=0.3, pitch=0.0, nose_x=0.5)
 CLOSE = Sample(ear=0.3, nose_y=0.5, face_width=0.42, pitch=0.0, nose_x=0.5)
 
 
+# Keep the last image each window was given, so the shot is the window's own pixels.
+# Grabbing the screen instead picks up whatever covers the window, which can be private.
+SHOWN: dict[str, object] = {}
+_imshow = cv2.imshow
+
+
+def _remember(title, img):
+    SHOWN[title] = img.copy()
+    _imshow(title, img)
+
+
+cv2.imshow = _remember
+
+
 def grab(title: str, path: Path) -> None:
-    hwnd = ctypes.windll.user32.FindWindowW(None, title)
-    rect = wintypes.RECT()
-    ctypes.windll.dwmapi.DwmGetWindowAttribute(hwnd, 9, ctypes.byref(rect), ctypes.sizeof(rect))
-    # Drop the 1px Windows border and the desktop showing through the rounded corners.
-    shot = ImageGrab.grab((rect.left + 1, rect.top + 1, rect.right - 1, rect.bottom - 1), all_screens=True)
+    shot = Image.fromarray(cv2.cvtColor(SHOWN[title], cv2.COLOR_BGR2RGB))
+    # Round the corners like a Windows 11 window.
     k, radius = 4, round(7 * app.display_scale())
     mask = Image.new("L", (shot.width * k, shot.height * k), 0)
     ImageDraw.Draw(mask).rounded_rectangle((0, 0, shot.width * k - 1, shot.height * k - 1), radius * k, fill=255)

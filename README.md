@@ -1,10 +1,10 @@
-![SitRight header: the app icon, a seated figure with an amber lamp, next to the name and "Posture, blink and break reminders from your webcam". A tray tooltip reads "SitRight: 14 blinks/min, sitting 32 min" above "Today: 82% upright, 3 breaks". Four readings below: 30 s of slouching before a reminder, 50 min at the desk before a break reminder, 20 face checks a second, and 0 images saved to disk or uploaded.](docs/header.png)
+![SitRight banner: the real preview window with a drawn stand-in where the camera picture goes, reading Slouching next to an amber lamp. One callout says each camera frame is measured in memory, then dropped; another says that after 30 s of slouching you get a notification.](docs/header.png)
 
 <p>
-  <a href="https://github.com/A2M33/sitright/actions/workflows/test.yml"><img alt="tests" src="https://github.com/A2M33/sitright/actions/workflows/test.yml/badge.svg"></a>
-  <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-56605a">
-  <img alt="Runs offline" src="https://img.shields.io/badge/runs-offline-56605a">
-  <a href="https://github.com/A2M33/sitright/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-56605a"></a>
+  <a href="https://github.com/A2M33/sitright/actions/workflows/test.yml"><img alt="tests" src="https://img.shields.io/github/actions/workflow/status/A2M33/sitright/test.yml?label=tests&style=flat-square&labelColor=111a2d&color=22304b"></a>
+  <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-22304b?style=flat-square&labelColor=111a2d&color=22304b">
+  <img alt="Runs offline" src="https://img.shields.io/badge/runs-offline-22304b?style=flat-square&labelColor=111a2d&color=22304b">
+  <a href="https://github.com/A2M33/sitright/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-22304b?style=flat-square&labelColor=111a2d&color=22304b"></a>
 </p>
 
 Hours at a desk and you slouch without noticing. SitRight sits in the system tray, watches your posture through the webcam, and sends a notification when you slouch, lean into the screen or forget to get up.
